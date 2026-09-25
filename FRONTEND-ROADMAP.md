@@ -311,3 +311,11 @@ Se l'interfaccia deve seguire le linee guida della PA, la libreria è **Bootstra
 Tailwind resta l'alternativa se non serve l'identità visiva della PA: preset condiviso in `@easybank/ui`, senza il peso di Bootstrap. `@easybank/ui` in entrambi i casi resta un pacchetto del workspace, non un quinto remote.
 
 Niente di questo è stato installato. La fase 1 parte dal client HTTP e da CORS, non dallo stile. Lo stile entra quando si disegnano shell e form, dalla fase 2.
+
+## Diario di lavoro — 2026-09-25
+
+Repository Git privato: https://github.com/PooriaEshghi/easy-bank, branch `main`. Primo commit `4f7ebb9`. Il remoto `origin` segue quel branch.
+
+Fuori dal repository restano `target/`, `node_modules/`, `dist/`, `.idea/` e gli hook locali di upgrade Java. Non c’erano file `.env`.
+
+Prossima sessione invariata: **fase 1**.
