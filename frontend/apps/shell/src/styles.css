@@ -1,0 +1,50 @@
+:root {
+  font-family: "Segoe UI", sans-serif;
+  color: #1c2430;
+  background: #f4f6f8;
+}
+
+body {
+  margin: 0;
+}
+
+header {
+  padding: 1.25rem 1.5rem;
+  background: #12324d;
+  color: #fff;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.panel {
+  min-height: 8rem;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #d5dde6;
+  border-radius: 8px;
+}
+
+.panel h2 {
+  margin: 0;
+}
+
+.fallback {
+  margin: 0;
+  color: #8a3b12;
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot-EurekaserverApplication<eurekaserver>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.eurekaserver.EurekaserverApplication",
+      "projectName": "eurekaserver",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-AccountsApplication<accounts>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.accounts.AccountsApplication",
+      "projectName": "accounts",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-CardsApplication<cards>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.cards.CardsApplication",
+      "projectName": "cards",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-LoansApplication<loans>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.loans.LoansApplication",
+      "projectName": "loans",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-GatewayserverApplication<gatewayserver>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.gatewayserver.GatewayserverApplication",
+      "projectName": "gatewayserver",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Maven
+target/
+
+# Frontend
+node_modules/
+dist/
+.pnpm-store/
+
+# IDE
+.idea/
+
+# Hook locali dell'estensione di upgrade Java, non fanno parte dell'applicazione
+.github/java-upgrade/
+.github/modernize/
+
+# Segreti e ambiente locale
+.env
+.env.*
+!.env.example
+
+# Log e file di sistema
+*.log
+hs_err_pid*
+Thumbs.db
+Desktop.ini
+.DS_Store

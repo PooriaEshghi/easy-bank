@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-AccountsApplication<accounts>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.eazybytes.accounts.AccountsApplication",
+            "projectName": "accounts",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
