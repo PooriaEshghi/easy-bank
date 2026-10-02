@@ -69,7 +69,7 @@
                 <version>3.5.1</version>
                 <configuration>
                     <to>
-                        <image>eazybytes/${project.artifactId}:s12</image>
+                        <image>eazybytes/${project.artifactId}:s13</image>
                     </to>
                 </configuration>
             </plugin>

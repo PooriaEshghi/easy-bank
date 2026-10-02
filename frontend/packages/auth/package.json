@@ -9,6 +9,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "keycloak-js": "catalog:"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

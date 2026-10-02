@@ -1,26 +1,59 @@
-import { lazy } from "react";
-import { RemotePanel } from "./RemotePanel";
-
-const AccountsRemote = lazy(() => import("accounts/App"));
-const CardsRemote = lazy(() => import("cards/App"));
-const LoansRemote = lazy(() => import("loans/App"));
+import { Link, Route, Routes } from "react-router";
+import { DashboardPage } from "./DashboardPage";
+import { NewCustomerPage } from "./NewCustomerPage";
+import { SearchPage } from "./SearchPage";
+import { authClient } from "./session";
+import { useAuth } from "./useAuth";
 
 export default function App() {
+  const { ready, session, error } = useAuth();
+
   return (
     <>
-      <header>
-        <h1>Easy Bank</h1>
+      <header className="header-bar">
+        <div className="header-title">
+          <h1>
+            <Link to="/">Easy Bank</Link>
+          </h1>
+          <nav className="header-nav" aria-label="Pagine">
+            <Link to="/">Ricerca</Link>
+            <Link to="/clienti/nuovo">Nuovo cliente</Link>
+          </nav>
+        </div>
+        <div className="session">
+          {error ? <span className="header-error">{error}</span> : null}
+          {session.authenticated ? (
+            <>
+              <span>{session.username ?? "Utente"}</span>
+              <span className="roles">{session.roles.join(", ")}</span>
+              <button type="button" onClick={() => void authClient.logout()}>
+                Esci
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => void authClient.login()} disabled={!ready}>
+              Entra
+            </button>
+          )}
+        </div>
       </header>
-      <main className="grid">
-        <RemotePanel title="accounts">
-          <AccountsRemote />
-        </RemotePanel>
-        <RemotePanel title="cards">
-          <CardsRemote />
-        </RemotePanel>
-        <RemotePanel title="loans">
-          <LoansRemote />
-        </RemotePanel>
+      <main>
+        <Routes>
+          <Route path="/" element={<SearchPage ready={ready} authenticated={session.authenticated} />} />
+          <Route path="/clienti/nuovo" element={<NewCustomerPage />} />
+          <Route path="/clienti/:mobileNumber" element={<DashboardPage />} />
+          <Route
+            path="*"
+            element={
+              <section className="panel" aria-label="Pagina non trovata">
+                <h2>Pagina non trovata</h2>
+                <p>
+                  <Link to="/">Torna alla ricerca</Link>
+                </p>
+              </section>
+            }
+          />
+        </Routes>
       </main>
     </>
   );

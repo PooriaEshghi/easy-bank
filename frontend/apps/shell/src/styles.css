@@ -14,16 +14,86 @@ header {
   color: #fff;
 }
 
+.header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
 header h1 {
   margin: 0;
   font-size: 1.4rem;
+}
+
+header a {
+  color: #fff;
+}
+
+.header-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1.25rem;
+}
+
+.header-nav {
+  display: flex;
+  gap: 1rem;
+}
+
+main a {
+  color: #12324d;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.session button,
+.panel button {
+  font: inherit;
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.session button {
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+}
+
+.session button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.roles,
+.header-error {
+  font-size: 0.85rem;
+}
+
+main {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
-  padding: 1.5rem;
 }
 
 .panel {
@@ -35,7 +105,91 @@ header h1 {
 }
 
 .panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.panel button,
+.search-form button {
+  margin-top: 0.75rem;
+  border: 1px solid #12324d;
+  background: #12324d;
+  color: #fff;
+}
+
+.panel button.button-quiet {
+  background: #fff;
+  color: #12324d;
+}
+
+.panel button.button-danger {
+  border-color: #8a3b12;
+  background: #8a3b12;
+}
+
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.search-form label {
+  display: grid;
+  flex: 1 1 12rem;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.search-form input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.search-form button {
+  margin-top: 0;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
   margin: 0;
+}
+
+.facts dt {
+  font-weight: 600;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid #1f6feb;
+  outline-offset: 2px;
+}
+
+.panel button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.panel pre {
+  overflow: auto;
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  background: #f4f6f8;
+  border-radius: 6px;
+  font-size: 0.85rem;
 }
 
 .fallback {

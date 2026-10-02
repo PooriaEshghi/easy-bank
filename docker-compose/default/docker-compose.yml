@@ -1,6 +1,6 @@
 services:
   configserver:
-    image: "eazybytes/configserver:s12"
+    image: "eazybytes/configserver:s13"
     container_name: configserver-ms
     ports:
       - "8071:8071"
@@ -15,7 +15,7 @@ services:
       service: microservice-base-config
 
   eurekaserver:
-    image: "eazybytes/eurekaserver:s12"
+    image: "eazybytes/eurekaserver:s13"
     container_name: eurekaserver-ms
     ports:
       - "8070:8070"
@@ -34,8 +34,28 @@ services:
     environment:
       SPRING_APPLICATION_NAME: "eurekaserver"
 
+  rabbitmq:
+    image: "rabbitmq:4-management"
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: eazybank
+      RABBITMQ_DEFAULT_PASS: eazybank
+      RABBITMQ_DEFAULT_VHOST: eazybank
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    extends:
+      file: common-config.yml
+      service: microservice-base-config
+
   accounts:
-    image: "eazybytes/accounts:s12"
+    image: "eazybytes/accounts:s13"
     container_name: accounts-ms
     ports:
       - "8080:8080"
@@ -50,14 +70,18 @@ services:
         condition: service_healthy
       eurekaserver:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "accounts"
+      OTEL_SERVICE_NAME: "accounts"
+      SPRING_RABBITMQ_HOST: rabbitmq
     extends:
       file: common-config.yml
       service: microservice-eureka-config
 
   loans:
-    image: "eazybytes/loans:s12"
+    image: "eazybytes/loans:s13"
     container_name: loans-ms
     ports:
       - "8090:8090"
@@ -79,7 +103,7 @@ services:
       service: microservice-eureka-config
 
   cards:
-    image: "eazybytes/cards:s12"
+    image: "eazybytes/cards:s13"
     container_name: cards-ms
     ports:
       - "9000:9000"
@@ -100,8 +124,20 @@ services:
       file: common-config.yml
       service: microservice-eureka-config
 
+  message:
+    image: "eazybytes/message:s13"
+    container_name: message-ms
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+    extends:
+      file: common-config.yml
+      service: microservice-base-config
+
   gatewayserver:
-    image: "eazybytes/gatewayserver:s12"
+    image: "eazybytes/gatewayserver:s13"
     container_name: gatewayserver-ms
     ports:
       - "8072:8072"

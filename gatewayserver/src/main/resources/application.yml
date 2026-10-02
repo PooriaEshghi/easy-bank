@@ -54,6 +54,10 @@ logging:
   pattern:
     level: "%5p [${spring.application.name},%X{trace_id},%X{span_id}]"
 
+eazybank:
+  cors:
+    allowed-origins: http://localhost:3000
+
 resilience4j.circuitbreaker:
   configs:
     default:

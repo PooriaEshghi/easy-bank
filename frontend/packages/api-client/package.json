@@ -9,6 +9,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@easybank/contracts": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

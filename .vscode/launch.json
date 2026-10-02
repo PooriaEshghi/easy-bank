@@ -49,6 +49,26 @@
       "projectName": "gatewayserver",
       "args": "",
       "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-ConfigserverApplication<configserver>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.configserver.ConfigserverApplication",
+      "projectName": "configserver",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-MessageApplication<message>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.eazybytes.message.MessageApplication",
+      "projectName": "message",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
     }
   ]
 }

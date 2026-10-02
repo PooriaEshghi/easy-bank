@@ -1,0 +1,71 @@
+.account-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-form h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.account-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.account-form input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.account-form input[readonly] {
+  background: #f4f6f8;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.account-form button {
+  font: inherit;
+  margin-top: 0;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #12324d;
+  border-radius: 6px;
+  background: #12324d;
+  color: #fff;
+  cursor: pointer;
+}
+
+.account-form button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.account-form button.button-quiet {
+  background: #fff;
+  color: #12324d;
+}
+
+.account-form button.button-danger {
+  border-color: #8a3b12;
+  background: #8a3b12;
+}
+
+.account-form .field-error,
+.account-form .fallback {
+  margin: 0;
+  color: #8a3b12;
+  font-weight: 400;
+}
+
+.account-form .label {
+  font-weight: 600;
+}

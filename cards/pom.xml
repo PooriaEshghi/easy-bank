@@ -74,6 +74,10 @@
 		</dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator-test</artifactId>
             <scope>test</scope>
         </dependency>
@@ -138,7 +142,7 @@
                 <version>3.5.1</version>
 				<configuration>
 					<to>
-						<image>eazybytes/${project.artifactId}:s12</image>
+						<image>eazybytes/${project.artifactId}:s13</image>
 					</to>
 				</configuration>
 			</plugin>
