@@ -1,0 +1,15 @@
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+
+    location / {
+        add_header Access-Control-Allow-Origin "*" always;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location = /remoteEntry.js {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cache-Control "no-cache" always;
+    }
+}

@@ -10,6 +10,7 @@ import com.eazybytes.accounts.exception.CustomerAlreadyExistsException;
 import com.eazybytes.accounts.exception.ResourceNotFoundException;
 import com.eazybytes.accounts.mapper.AccountsMapper;
 import com.eazybytes.accounts.mapper.CustomerMapper;
+import com.eazybytes.accounts.messaging.DomainEventPublisher;
 import com.eazybytes.accounts.repository.AccountsRepository;
 import com.eazybytes.accounts.repository.CustomerRepository;
 import com.eazybytes.accounts.service.IAccountsService;
@@ -32,6 +33,7 @@ public class AccountsServiceImpl  implements IAccountsService {
     private AccountsRepository accountsRepository;
     private CustomerRepository customerRepository;
     private final StreamBridge streamBridge;
+    private final DomainEventPublisher domainEventPublisher;
 
     /**
      * @param customerDto - CustomerDto Object
@@ -46,6 +48,7 @@ public class AccountsServiceImpl  implements IAccountsService {
         }
         Customer savedCustomer = customerRepository.save(customer);
         Accounts savedAccount = accountsRepository.save(createNewAccount(savedCustomer));
+        domainEventPublisher.publish("accounts.created", savedCustomer.getMobileNumber());
         sendCommunication(savedAccount, savedCustomer);
     }
 
@@ -111,6 +114,7 @@ public class AccountsServiceImpl  implements IAccountsService {
             CustomerMapper.mapToCustomer(customerDto,customer);
             customerRepository.save(customer);
             isUpdated = true;
+            domainEventPublisher.publish("accounts.updated", customer.getMobileNumber());
         }
         return  isUpdated;
     }
@@ -126,6 +130,7 @@ public class AccountsServiceImpl  implements IAccountsService {
         );
         accountsRepository.deleteByCustomerId(customer.getCustomerId());
         customerRepository.deleteById(customer.getCustomerId());
+        domainEventPublisher.publish("accounts.deleted", mobileNumber);
         return true;
     }
 

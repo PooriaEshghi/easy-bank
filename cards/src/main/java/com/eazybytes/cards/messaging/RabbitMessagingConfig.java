@@ -10,6 +10,7 @@ import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFacto
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.retry.RepublishMessageRecoverer;
+import org.springframework.amqp.support.converter.JacksonJavaTypeMapper;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -55,7 +56,10 @@ public class RabbitMessagingConfig {
 
     @Bean
     MessageConverter jacksonMessageConverter() {
-        return new JacksonJsonMessageConverter();
+        JacksonJsonMessageConverter converter = new JacksonJsonMessageConverter();
+        converter.setTypePrecedence(JacksonJavaTypeMapper.TypePrecedence.INFERRED);
+        converter.setAlwaysConvertToInferredType(true);
+        return converter;
     }
 
     @Bean

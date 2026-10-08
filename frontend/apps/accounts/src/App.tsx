@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createApiClient, type ApiClient, type ApiResult } from "@easybank/api-client";
+import { createApiClient, describeStatus, type ApiClient, type ApiResult } from "@easybank/api-client";
 import type { CustomerDto, ResponseDto } from "@easybank/contracts";
 import { apiBaseUrl } from "./env";
 import { describeResult, validationFields } from "./failure";
@@ -555,9 +555,7 @@ function ResultLine({
   if (!result || result.ok) {
     if (result?.ok && result.data) {
       return (
-        <p role="status">
-          {result.data.statusCode} {result.data.statusMsg}
-        </p>
+        <p role="status">{describeStatus(result.data)}</p>
       );
     }
     return null;

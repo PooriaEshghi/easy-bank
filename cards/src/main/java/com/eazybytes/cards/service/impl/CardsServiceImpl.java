@@ -6,6 +6,7 @@ import com.eazybytes.cards.entity.Cards;
 import com.eazybytes.cards.exception.CardAlreadyExistsException;
 import com.eazybytes.cards.exception.ResourceNotFoundException;
 import com.eazybytes.cards.mapper.CardsMapper;
+import com.eazybytes.cards.messaging.DomainEventPublisher;
 import com.eazybytes.cards.repository.CardsRepository;
 import com.eazybytes.cards.service.ICardsService;
 import lombok.AllArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.Random;
 public class CardsServiceImpl implements ICardsService {
 
     private CardsRepository cardsRepository;
+    private final DomainEventPublisher domainEventPublisher;
 
     /**
      * @param mobileNumber - Mobile Number of the Customer
@@ -30,6 +32,7 @@ public class CardsServiceImpl implements ICardsService {
             throw new CardAlreadyExistsException("Card already registered with given mobileNumber "+mobileNumber);
         }
         cardsRepository.save(createNewCard(mobileNumber));
+        domainEventPublisher.publish("cards.created", mobileNumber);
     }
 
     /**
@@ -72,6 +75,7 @@ public class CardsServiceImpl implements ICardsService {
                 () -> new ResourceNotFoundException("Card", "CardNumber", cardsDto.getCardNumber()));
         CardsMapper.mapToCards(cardsDto, cards);
         cardsRepository.save(cards);
+        domainEventPublisher.publish("cards.updated", cards.getMobileNumber());
         return  true;
     }
 
@@ -85,6 +89,7 @@ public class CardsServiceImpl implements ICardsService {
                 () -> new ResourceNotFoundException("Card", "mobileNumber", mobileNumber)
         );
         cardsRepository.deleteById(cards.getCardId());
+        domainEventPublisher.publish("cards.deleted", mobileNumber);
         return true;
     }
 

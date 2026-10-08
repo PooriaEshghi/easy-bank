@@ -189,6 +189,42 @@ function classifyFailure(parsed: unknown, responseDto: ResponseDto | null): ApiF
   return { kind: "unknown", body: parsed };
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  "Account created successfully": "Cliente creato",
+  "Card created successfully": "Carta creata",
+  "Loan created successfully": "Prestito creato",
+  "Request processed successfully": "Richiesta completata",
+  "Update operation failed. Please try again or contact Dev team": "Aggiornamento non riuscito",
+  "Delete operation failed. Please try again or contact Dev team": "Eliminazione non riuscita",
+};
+
+export function describeStatus(body: ResponseDto): string {
+  const label = STATUS_LABELS[body.statusMsg];
+  return label ? `${body.statusCode} · ${label} · ${body.statusMsg}` : `${body.statusCode} · ${body.statusMsg}`;
+}
+
+export function describeFailure(status: number, failure: ApiFailure): string {
+  if (status === 401 || status === 403) {
+    return `${status} · Permesso negato`;
+  }
+  switch (failure.kind) {
+    case "response":
+      return describeStatus(failure.body);
+    case "error":
+      return status >= 500
+        ? `${status} · Errore del servizio · ${failure.body.errorMessage}`
+        : `${status} · ${failure.body.errorMessage}`;
+    case "validation":
+      return `${status} · ${Object.entries(failure.body)
+        .map(([field, message]) => `${field}: ${message}`)
+        .join("; ")}`;
+    case "empty":
+      return `${status} · risposta vuota`;
+    case "unknown":
+      return status >= 500 ? `${status} · Errore del servizio · risposta non riconosciuta` : `${status} · risposta non riconosciuta`;
+  }
+}
+
 export async function* subscribeCustomerEvents(
   baseUrl: string,
   mobileNumber: string,

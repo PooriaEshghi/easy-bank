@@ -1,4 +1,5 @@
 import { Link, Route, Routes } from "react-router";
+import { ContactsPage } from "./ContactsPage";
 import { DashboardPage } from "./DashboardPage";
 import { NewCustomerPage } from "./NewCustomerPage";
 import { SearchPage } from "./SearchPage";
@@ -18,6 +19,7 @@ export default function App() {
           <nav className="header-nav" aria-label="Pagine">
             <Link to="/">Ricerca</Link>
             <Link to="/clienti/nuovo">Nuovo cliente</Link>
+            <Link to="/contatti">Contatti</Link>
           </nav>
         </div>
         <div className="session">
@@ -39,7 +41,8 @@ export default function App() {
       </header>
       <main>
         <Routes>
-          <Route path="/" element={<SearchPage ready={ready} authenticated={session.authenticated} />} />
+          <Route path="/" element={<SearchPage />} />
+          <Route path="/contatti" element={<ContactsPage />} />
           <Route path="/clienti/nuovo" element={<NewCustomerPage />} />
           <Route path="/clienti/:mobileNumber" element={<DashboardPage />} />
           <Route

@@ -20,6 +20,14 @@ spring:
     show-sql: true
   config:
     import: "optional:configserver:http://localhost:8071/"
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: eazybank
+    password: eazybank
+    virtual-host: eazybank
+    connection-timeout: 10s
+    publisher-confirm-type: correlated
 
 management:
   endpoints:
@@ -61,3 +69,7 @@ logging:
     com:
       eazybytes:
         cards: DEBUG
+
+eazybank:
+  messaging:
+    broker: rabbit

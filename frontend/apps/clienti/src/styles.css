@@ -1,0 +1,90 @@
+:root {
+  font-family: "Segoe UI", sans-serif;
+  color: #1c2430;
+  background: #f4f6f8;
+}
+
+body {
+  margin: 0;
+}
+
+header {
+  padding: 1.25rem 1.5rem;
+  background: #12324d;
+  color: #fff;
+}
+
+.header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+header a {
+  color: #fff;
+}
+
+.header-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1.25rem;
+}
+
+.header-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+header a[aria-current="page"] {
+  text-decoration: underline;
+}
+
+main {
+  padding: 1.5rem;
+}
+
+main a {
+  color: #12324d;
+}
+
+.panel {
+  max-width: 40rem;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #d5dde6;
+  border-radius: 8px;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.config {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.config div {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.config dt {
+  font-weight: 600;
+}
+
+.config dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

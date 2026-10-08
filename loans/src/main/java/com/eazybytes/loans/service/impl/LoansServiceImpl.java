@@ -6,6 +6,7 @@ import com.eazybytes.loans.entity.Loans;
 import com.eazybytes.loans.exception.LoanAlreadyExistsException;
 import com.eazybytes.loans.exception.ResourceNotFoundException;
 import com.eazybytes.loans.mapper.LoansMapper;
+import com.eazybytes.loans.messaging.DomainEventPublisher;
 import com.eazybytes.loans.repository.LoansRepository;
 import com.eazybytes.loans.service.ILoansService;
 import lombok.AllArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.Random;
 public class LoansServiceImpl implements ILoansService {
 
     private LoansRepository loansRepository;
+    private final DomainEventPublisher domainEventPublisher;
 
     /**
      * @param mobileNumber - Mobile Number of the Customer
@@ -30,6 +32,7 @@ public class LoansServiceImpl implements ILoansService {
             throw new LoanAlreadyExistsException("Loan already registered with given mobileNumber "+mobileNumber);
         }
         loansRepository.save(createNewLoan(mobileNumber));
+        domainEventPublisher.publish("loans.created", mobileNumber);
     }
 
     /**
@@ -72,6 +75,7 @@ public class LoansServiceImpl implements ILoansService {
                 () -> new ResourceNotFoundException("Loan", "LoanNumber", loansDto.getLoanNumber()));
         LoansMapper.mapToLoans(loansDto, loans);
         loansRepository.save(loans);
+        domainEventPublisher.publish("loans.updated", loans.getMobileNumber());
         return  true;
     }
 
@@ -85,6 +89,7 @@ public class LoansServiceImpl implements ILoansService {
                 () -> new ResourceNotFoundException("Loan", "mobileNumber", mobileNumber)
         );
         loansRepository.deleteById(loans.getLoanId());
+        domainEventPublisher.publish("loans.deleted", mobileNumber);
         return true;
     }
 

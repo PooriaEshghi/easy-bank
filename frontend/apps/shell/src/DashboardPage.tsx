@@ -27,6 +27,8 @@ export function DashboardPage() {
   if (mobileRef.current !== mobileNumber) {
     mobileRef.current = mobileNumber;
     correlationId.current = null;
+    setResult(null);
+    setNetworkError(null);
   }
 
   useEffect(() => {
@@ -38,7 +40,6 @@ export function DashboardPage() {
     correlationId.current = requestCorrelationId;
     let active = true;
     setLoading(true);
-    setResult(null);
     setNetworkError(null);
 
     void (async () => {
@@ -285,30 +286,29 @@ function ProductRemotes({
   onDeleted: () => void;
   onUpdated: () => void;
 }) {
+  const sessionProps = {
+    mobileNumber,
+    roles,
+    authReady,
+    getAccessToken: () => authClient.getSession().accessToken ?? undefined,
+    refreshSession: () => authClient.refresh(),
+  };
+
   return (
     <div className="grid">
       <div id="remote-accounts">
         <RemotePanel title="accounts">
-          <AccountsRemote
-            mode="view"
-            mobileNumber={mobileNumber}
-            roles={roles}
-            authReady={authReady}
-            getAccessToken={() => authClient.getSession().accessToken ?? undefined}
-            refreshSession={() => authClient.refresh()}
-            onDeleted={onDeleted}
-            onUpdated={onUpdated}
-          />
+          <AccountsRemote mode="view" {...sessionProps} onDeleted={onDeleted} onUpdated={onUpdated} />
         </RemotePanel>
       </div>
       <div id="remote-cards">
         <RemotePanel title="cards">
-          <CardsRemote />
+          <CardsRemote {...sessionProps} onDeleted={onUpdated} onUpdated={onUpdated} />
         </RemotePanel>
       </div>
       <div id="remote-loans">
         <RemotePanel title="loans">
-          <LoansRemote />
+          <LoansRemote {...sessionProps} onDeleted={onUpdated} onUpdated={onUpdated} />
         </RemotePanel>
       </div>
     </div>

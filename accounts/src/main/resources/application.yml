@@ -40,6 +40,7 @@ spring:
     password: eazybank
     virtual-host: eazybank
     connection-timeout: 10s
+    publisher-confirm-type: correlated
 
 management:
   endpoints:
@@ -101,6 +102,10 @@ resilience4j.circuitbreaker:
 #         - java.lang.NullPointerException
 #       retryExceptions:
 #         - java.util.concurrent.TimeoutException
+
+eazybank:
+  messaging:
+    broker: rabbit
 
 # resilience4j.ratelimiter:
 #   configs:

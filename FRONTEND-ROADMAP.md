@@ -2,6 +2,8 @@
 
 Piano per costruire il frontend di Easy Bank come shell React che compone tre microfrontend, uno per ciascun microservizio di dominio già presente nel backend: **accounts**, **cards** e **loans**. Il browser parla solo con il **gatewayserver**. I servizi Spring restano indipendenti e non conoscono il frontend.
 
+Questo documento ha due prodotti. Le fasi 0–10 sono il **back office** degli sportellisti, su `http://localhost:3000`. Il **front office** dei clienti della banca è la sezione in fondo, fasi F0–F6, su `http://localhost:3010`. Non riusa i remote dello sportello e non sostituisce le fasi 9 e 10.
+
 ## Contesto backend da rispettare
 
 | Servizio | Porta diretta | Percorso sul gateway (`8072`) |
@@ -304,6 +306,8 @@ Criterio: creando un cliente nuovo, la dashboard della shell lo rilegge. Senza r
 
 ### Fase 4 — Remote cards
 
+Stato: **fatta il 2026-10-06**.
+
 - Crea carta con il solo `mobileNumber` (`POST /api/create`).
 - Dettaglio: numero, tipo `Credit Card`, plafond, utilizzato, disponibile.
 - Update dei soli importi, con la regola `availableAmount` coerente con plafond e utilizzato prima dell'invio.
@@ -312,6 +316,8 @@ Criterio: creando un cliente nuovo, la dashboard della shell lo rilegge. Senza r
 Criterio: dopo la creazione, `fetchCustomerDetails` nella dashboard mostra `cardsDto`. Un operatore solo `ACCOUNTS` vede la carta e non può modificarla.
 
 ### Fase 5 — Remote loans
+
+Stato: **fatta il 2026-10-06**.
 
 Stesso disegno delle carte, sul contratto prestiti:
 
@@ -325,6 +331,8 @@ Criterio: cliente con conto, carta e prestito mostra le tre schede popolate. Lo 
 
 ### Fase 6 — Pagine trasversali e rifinitura
 
+Stato: **fatta il 2026-10-06**.
+
 - Pagina contatti che unisce i tre `contact-info`.
 - Messaggi italiani allineati a `statusMsg` del backend (`Account created successfully` e gli equivalenti di cards/loans vanno mostrati, con un'etichetta italiana accanto al codice `statusCode`).
 - Stati loading, vuoto, 417, 4xx di validazione (elenco `errorMessage`) e 5xx.
@@ -335,6 +343,8 @@ Criterio: un percorso completo sportello (login con tutti i ruoli → crea clien
 
 ### Fase 7 — Build, container e compose
 
+Stato: **fatta il 2026-10-06**.
+
 - Build di produzione dei quattro frontend. La shell punta ai remote con URL di ambiente (`VITE_ACCOUNTS_REMOTE`, `VITE_CARDS_REMOTE`, `VITE_LOANS_REMOTE`), non con localhost cablato.
 - Immagine nginx per ciascun frontend, porte interne distinte, in `docker-compose` accanto ai microservizi.
 - Il gateway, in quel compose, abilita l'origine reale della shell.
@@ -344,11 +354,15 @@ Criterio: `docker compose` della stack più i quattro frontend permette il perco
 
 ### Fase 8 — Verifica automatica
 
+Stato: **fatta il 2026-10-06**.
+
 - Test di `api-client` sui due formati di risposta e sull'header di correlazione (Vitest, mock di fetch).
 - Un test di componente per il form cliente (validazione 5–30 / email / 10 cifre) e uno per il form importi carta.
 - Una prova end-to-end del percorso sportello (Playwright) contro gateway e Keycloak locali, marcata come opzionale in CI finché la stack non è disponibile nel runner.
 
 ### Fase 9 — RabbitMQ tra i microservizi
+
+Stato: **fatta il 2026-10-06**.
 
 Dipende dai tre servizi di dominio e dal compose locale. Può partire prima del frontend.
 
@@ -390,7 +404,19 @@ Le fasi 4 e 5 sono indipendenti tra loro e si possono alternare. La 3 viene prim
 
 La fase 9 non ha bisogno delle app React: può avanzare appena accounts, cards, loans e il compose locale ci sono. La fase 10 ha bisogno della dashboard e dei tre remote, quindi sta dopo la fase 6 anche se nel diagramma è in coda alla 9.
 
-## Fuori da questa roadmap
+Il front office è un binario a parte. Può partire con le fasi 0–8 già chiuse. La F1 tocca gateway e Keycloak, non i remote dello sportello.
+
+```text
+Fase F0 confine
+  → Fase F1 identità cliente e /eazybank/me
+    → Fase F2 home in sola lettura
+      → Fase F3 profilo e contatti
+        → Fase F4 nginx
+          → Fase F5 test
+            → Fase F6 apertura conto, solo con una API nuova
+```
+
+## Fuori dal back office
 
 - Autenticazione dentro i microservizi accounts, cards e loans (oggi la protezione è sul gateway).
 - Un BFF Node. Il gateway e `fetchCustomerDetails` bastano.
@@ -405,6 +431,148 @@ La fase 9 non ha bisogno delle app React: può avanzare appena accounts, cards, 
 Il frontend è pronto quando uno sportellista, dal solo `http://localhost:3000`, cerca un cliente per cellulare, legge il riepilogo aggregato e — se il suo token ha i ruoli — crea e aggiorna conto, carta e prestito passando esclusivamente da `http://localhost:8072`, con un microfrontend isolato per ciascun microservizio Spring.
 
 Con la fase 10, una seconda scheda aperta sullo stesso cliente vede create, update e delete senza ricaricare la shell. La cancellazione del cliente, via `accounts.deleted`, toglie anche carta e prestito.
+
+## Front office — area clienti
+
+Il back office è lo strumento dei dipendenti. Un operatore, con i realm role `ACCOUNTS`, `CARDS` e `LOANS`, cerca un cellulare qualsiasi, crea il cliente, modifica plafond e residuo, elimina carta e conto. Quelle schermate non si danno a un cliente della banca.
+
+Il front office è un'altra applicazione, usata dal titolare del conto. Nella prima versione **legge solo il proprio rapporto**: anagrafica, conto Savings, carta se c'è, prestito se c'è, e i recapiti della banca. Non crea clienti, non cambia importi, non elimina nulla. Movimenti, pagamenti e bonifici non hanno API: restano fuori, come già per lo sportello.
+
+### Perché non si riusano i remote
+
+I remote `accounts`, `cards` e `loans` sono lo sportello: contengono Crea, Salva ed Elimina. Montarli nel sito del cliente mostrerebbe i pulsanti dei dipendenti, anche se il gateway poi rispondesse 403.
+
+La chiave oggi è il `mobileNumber` passato in query. Le GET sono `permitAll`: chiunque può leggere il rapporto di qualunque cellulare. Un sito clienti che chiedesse «inserisci il tuo cellulare» e chiamasse `fetchCustomerDetails` copierebbe quel buco. Il cliente non digita il cellulare. Il cellulare sta nel token, e il gateway rifiuta una richiesta che ne indica un altro.
+
+I microservizi accounts, cards e loans non cambiano. Non conoscono il frontend e non validano il JWT. Il controllo nuovo sta sul gateway, come il resto della sicurezza.
+
+### Confine
+
+| | Back office | Front office |
+| --- | --- | --- |
+| Chi entra | dipendente | titolare del conto |
+| Origine | `http://localhost:3000` | `http://localhost:3010` |
+| App | `frontend/apps/shell` più i tre remote | `frontend/apps/clienti`, una sola app React |
+| Client Keycloak | `easybank-shell` | `easybank-clienti`, public, PKCE S256 |
+| Redirect | `http://localhost:3000/*` | `http://localhost:3010/*` |
+| Ruoli | `ACCOUNTS`, `CARDS`, `LOANS` | `CUSTOMER` |
+| Claim | nessuno di dominio | `mobileNumber`, 10 cifre, mapper dal profilo utente |
+| API | quelle della tabella sopra | `GET /eazybank/me/api/summary` e le tre `contact-info` |
+| Scrittura | sì, col ruolo del servizio | no |
+
+I due siti non condividono origine, quindi non condividono la sessione del browser. Un operatore loggato sullo sportello non risulta loggato nell'area clienti, e il contrario. I pacchetti riusati sono `@easybank/contracts` e `@easybank/api-client`. `@easybank/auth` resta dello sportello: l'area clienti ha il proprio init Keycloak, stesso `keycloak-js`, client id diverso. Niente Module Federation. React Router vive in `apps/clienti`.
+
+Lo stile non si installa in queste fasi. Niente Bootstrap Italia. Le etichette italiane di `describeStatus` e `describeFailure` si riusano.
+
+Utente di prova, password `easybank`: `cliente`. Realm role `CUSTOMER`. Attributo `mobileNumber` uguale a un cliente già presente nell'H2 di accounts (per la prova, un cellulare creato dallo sportello). Senza quell'anagrafica la home è «rapporto non trovato», non una pagina vuota senza spiegazione.
+
+### API nuova, sul gateway
+
+`GET /eazybank/me/api/summary`
+
+- Matcher registrato **prima** di `pathMatchers(HttpMethod.GET).permitAll()`.
+- Richiede JWT e realm role `CUSTOMER`. Un token da sportello, anche `sportello` con i tre ruoli, riceve 403.
+- Il cellulare si legge dal claim `mobileNumber`. Manca il claim, o non è di 10 cifre: 403, senza chiamare accounts.
+- Una query `?mobileNumber=` diversa dal claim: 403. Il gateway non inoltra il cellulare scelto dal browser.
+- Se il claim è valido, il gateway chiama in interno `GET /eazybank/accounts/api/fetchCustomerDetails?mobileNumber=<claim>` e copia `eazybank-correlation-id`. La risposta verso il browser è il `CustomerDetailsDto` già esistente. `cardsDto` e `loansDto` null restano «carta assente» e «prestito assente».
+- Nessun `POST`, `PUT` o `DELETE` sotto `/eazybank/me/**` in queste fasi.
+
+CORS del gateway, accanto all'origine dello sportello: `http://localhost:3010`. Stessi metodi e header di oggi (`Authorization`, `Content-Type`, `eazybank-correlation-id`). La proprietà è già una lista separata da virgole (`EAZYBANK_CORS_ALLOWED_ORIGINS`).
+
+Lo stream `GET /eazybank/events/stream` della fase 10 **non** si collega dall'area clienti. Quel matcher è `authenticated()` senza controllo del cellulare: un token `CUSTOMER` potrebbe chiedere gli eventi di un altro numero. Si aggiunge all'area clienti solo quando il gateway applica la stessa regola del claim.
+
+### Fase F0 — Confine dell'app
+
+Stato: **fatta il 2026-10-06**.
+
+- App `frontend/apps/clienti` nel workspace pnpm, porta dev `3010`, strict port.
+- Env: `VITE_API_BASE_URL` (default `http://localhost:8072`), `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID=easybank-clienti`.
+- Nessun import da `accounts/App`, `cards/App`, `loans/App`.
+- Route previste, anche solo come pagine vuote: `/` entra, `/home` rapporto, `/profilo`, `/contatti`.
+
+Criterio: `pnpm --filter @easybank/clienti dev` risponde su `3010` e non carica remote dello sportello. Lo sportello su `3000` non cambia.
+
+### Fase F1 — Identità e summary proprio
+
+Stato: **non iniziata**. Dipende da F0. Non dipende dalle fasi 9 e 10.
+
+- Client Keycloak `easybank-clienti` e utente `cliente` come in tabella.
+- Sul gateway, la route `/eazybank/me/api/summary` descritta sopra. Il filtro legge il claim e chiama `fetchCustomerDetails`. Accounts, cards e loans non si modificano e non si ricostruiscono.
+- L'origine `http://localhost:3010` è fra le origini CORS. Lo sportello su `3000` continua a passare.
+- Un token senza `CUSTOMER`, un claim assente e un `mobileNumber` in query diverso dal claim ricevono 403. Il correlation id è nella risposta, come per le altre chiamate.
+
+Criterio: con il token di `cliente` la GET torna il `CustomerDetailsDto` del suo cellulare. Con il token di `sportello` la stessa URL è 403. Cambiare il query param non cambia il cliente letto.
+
+### Fase F2 — Home in sola lettura
+
+Stato: **non iniziata**. Dipende da F1.
+
+- Login e logout. Il pulsante Entra resta disabilitato finché Keycloak non ha finito l'init.
+- Dopo il login la home chiama solo `/eazybank/me/api/summary`.
+- Mostra nome, email, cellulare, conto (numero, Savings, filiale), carta se `cardsDto` c'è, prestito se `loansDto` c'è. Importi in sola lettura.
+- Assenze: «Carta assente», «Prestito assente». Errore di rete o 5xx: `describeFailure` e il correlation id, con Riprova. 401 e 403: «Permesso negato», e si torna al login se il token non c'è più.
+- Nessun campo modificabile, nessun pulsante Salva, Crea o Elimina.
+- A 390px la home non sborda in orizzontale.
+
+Criterio: `cliente` vede il rapporto creato dallo sportello per il suo cellulare. Non esiste un modo, nella UI, di chiedere un altro cellulare.
+
+### Fase F3 — Profilo e contatti
+
+Stato: **non iniziata**. Dipende da F2.
+
+- `/profilo` rilegge lo stesso summary e mostra solo l'anagrafica. Il cellulare non si modifica: è la chiave del conto.
+- `/contatti` legge le tre `GET /eazybank/{accounts|cards|loans}/api/contact-info`, già pubbliche. Stessi stati vuoti della pagina contatti dello sportello: messaggio, recapito, reperibilità.
+- La home non incorpora i contatti.
+
+Criterio: il profilo mostra il nome del summary. I tre pannelli contatti rispondono anche senza rifare il login, e un errore di rete mostra il correlation id.
+
+### Fase F4 — Build e container
+
+Stato: **non iniziata**. Dipende da F2. F3 può seguire.
+
+- Build di produzione di `apps/clienti`. Immagine nginx `easybank/clienti:local`, porta interna `3010`, nel compose default accanto a `shell-ui`.
+- Health: `GET /` sulla `3010` risponde 200.
+- Il compose del gateway elenca entrambe le origini, `http://localhost:3000` e `http://localhost:3010`.
+- Redirect Keycloak del client `easybank-clienti` resta `http://localhost:3010/*`.
+
+Criterio: la home del cliente si apre da nginx, senza un processo Node sull'host. Lo sportello sulle `3000`–`3003` continua a rispondere.
+
+### Fase F5 — Verifica
+
+Stato: **non iniziata**. Dipende da F2.
+
+- Vitest sul client HTTP dell'area clienti: la summary non accetta un cellulare passato dalla pagina; manda `Authorization` e `eazybank-correlation-id`.
+- Un test di componente della home: con `cardsDto` null si legge «Carta assente» e non compare un pulsante di scrittura.
+- Playwright del percorso cliente, stesso criterio dello sportello: `EASYBANK_E2E=1` in locale, job CI spento finché la variabile di repository non è `true`. Il test entra come `cliente`, vede il proprio conto, e una URL con un altro cellulare non cambia i dati in pagina.
+
+Criterio: `pnpm test` del workspace resta verde, compreso il test della home. L'end-to-end cliente è saltato se la stack non c'è.
+
+### Fase F6 — Apertura conto, dopo
+
+Stato: **non iniziata**. Non fa parte del primo rilascio. Si scrive solo quando le fasi F0–F5 sono chiuse e si chiede esplicitamente.
+
+Oggi `POST /eazybank/accounts/api/create` assegna Savings e la filiale di default, e il gateway la riserva al ruolo `ACCOUNTS`. Darla al cliente significherebbe dargli il ruolo dello sportellista.
+
+Serve un'altra operazione, per esempio `POST /eazybank/me/api/open`, ruolo `CUSTOMER`, body limitato a nome ed email. Il cellulare arriva dal claim, non dal body. Il gateway, o un endpoint nuovo di accounts dietro il gateway, esegue la stessa creazione di dominio. La risposta 201 porta il cliente sulla home. Un cellulare già registrato resta 400, con il messaggio già previsto da accounts.
+
+Non entra in F6: scelta del tipo di conto, carta, prestito, documenti, pagamento.
+
+### Fuori dal front office
+
+- Montare i remote dello sportello nell'area clienti.
+- Ruoli `ACCOUNTS`, `CARDS`, `LOANS` sull'utente cliente.
+- Digitare un cellulare per leggere un rapporto.
+- Modifica di plafond, utilizzato, importo prestito, filiale, nome conto.
+- Eliminazione di carta, prestito o conto.
+- Movimenti, pagamenti, bonifici, elenco clienti.
+- `GET /eazybank/events/stream` prima del controllo del claim.
+- Autenticazione dentro accounts, cards e loans. Resta sul gateway.
+- Un BFF Node.
+- Stessa origine e stesso client Keycloak dello sportello.
+
+### Definizione di finito del front office
+
+L'area clienti è pronta, per questa prima versione, quando il titolare apre solo `http://localhost:3010`, entra con il ruolo `CUSTOMER` e legge il proprio conto, la propria carta e il proprio prestito passando da `http://localhost:8072`, senza poter chiedere il rapporto di un altro cellulare e senza pulsanti di scrittura. Lo sportello su `3000` resta quello dei dipendenti.
 
 ## Diario di lavoro — 2026-09-24
 
@@ -625,3 +793,69 @@ Il remote `accounts` esporta `./App` con due modalità. La shell passa `mobileNu
 Senza il ruolo `ACCOUNTS` i pulsanti Crea cliente, Salva ed Elimina non ci sono. Una POST forzata con il token di `operatore-carte` riceve 403 dal gateway.
 
 Verifica nel browser, stack Docker invariata. Senza login, `/clienti/nuovo` non ha il pulsante di creazione. Con `sportello` un nome corto non parte verso il gateway. Il cliente `4350191001` (Cliente Fase Tre) compare in dashboard con Savings e `123 Main Street, New York`; dopo il salvataggio la filiale è `Via Roma 1, Milano`. Con `operatore-carte` il cliente si legge e i pulsanti di scrittura mancano; la POST forzata è 403. Con `sportello` la conferma di eliminazione riporta alla ricerca e lo stesso cellulare risulta «Cliente non trovato». A 390px la dashboard non sborda. `pnpm typecheck` è verde. Il cliente di prova è stato eliminato.
+
+## Diario di lavoro — 2026-10-06
+
+Fasi 4, 5, 6, 7, 8 e 9 chiuse. Prossima sessione del back office: **fase 10** (stream SSE sulla shell). Lo stile resta fuori. La fase 9 è il bus della roadmap, distinto dal flusso email|sms già presente con Spring Cloud Stream.
+
+### Remote cards e loans
+
+Il remote `cards` esporta `./App`. La shell gli passa cellulare, ruoli e token. Se la GET è 404, il riquadro dice «Carta assente» e, con il ruolo `CARDS`, offre `POST /eazybank/cards/api/create` senza body. Il dettaglio mostra numero, `Credit Card`, plafond, utilizzato e disponibile. Si modificano solo gli importi: il disponibile viene ricalcolato come plafond meno utilizzato e, se non torna, il salvataggio non parte. Elimina chiede conferma. Il remote `loans` fa lo stesso su `Home Loan`, importo, pagato e residuo. Ogni GET, compresa quella di loans, manda `eazybank-correlation-id`.
+
+Cancellare la carta o il prestito non torna alla ricerca: aggiorna la dashboard. Solo l'eliminazione del cliente, nel remote accounts, riporta a `/`.
+
+Un aggiornamento della dashboard non smonta più i remote. Prima il refresh azzerava il cliente e il messaggio di esito spariva insieme al form.
+
+### Contatti e messaggi
+
+`/contatti` legge i tre `contact-info`. La ricerca non tiene più il pannello del solo accounts. La GET è pubblica: la pagina funziona anche senza login e, se la sessione c'è, manda comunque il Bearer. Un errore di rete mostra il correlation id generato dal client.
+
+`describeStatus` in `@easybank/api-client` affianca al `statusCode` un'etichetta italiana e lascia il `statusMsg` del backend. Esempi: `201 · Carta creata · Card created successfully`, `200 · Richiesta completata · Request processed successfully`. Un 401 o 403 è «Permesso negato». Un 5xx è «Errore del servizio».
+
+### Gateway
+
+La prima `POST /eazybank/accounts/api/create` dopo l'avvio superava il secondo e il gateway rispondeva 504, anche se accounts aveva già salvato il cliente. In `docker-compose/default/docker-compose.yml`, sul servizio `gatewayserver`, c'è `RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION=10s`, come il customizer del corso. Il container `gatewayserver-ms` è stato ricreato con questa variabile. L'immagine `eazybytes/gatewayserver:s13` non è stata ricostruita.
+
+### Verifica
+
+Stack Docker riavviata (configserver, Eureka, RabbitMQ, accounts, loans, cards, gateway) più Keycloak `affectionate_easley` sulla porta `7080`. `pnpm dev` sulle porte 3000–3003. `pnpm typecheck` è verde.
+
+Nel browser, con `sportello`: un cellulare di meno di 10 cifre non chiama il gateway; `/contatti` mostra i tre pannelli e il correlation id; il cliente `4356416984` (Cliente Fase Quattro) nasce e la dashboard lo rilegge con Savings. Carta e prestito compaiono nelle tre schede, con i messaggi «Carta creata» e «Prestito creato». Un disponibile incoerente non parte. L'utilizzato `1000` salva e la scheda mostra disponibile `99000`. A 390px la dashboard non sborda. Con `operatore-conti` carta e prestito si leggono e non ci sono Salva, Elimina o Crea. La conferma di eliminazione della carta lascia «Carta assente» senza ricaricare la shell.
+
+Con `loans-ms` fermo, la dashboard del cliente resta aperta, accounts e cards rispondono, e il remote prestiti mostra `500 · Errore del servizio` con il correlation id. La scheda riepilogativa dice «Prestito assente»: il fallback Feign di accounts mette `loansDto` a null. `loans-ms` è stato riavviato. Il cliente di prova è ancora nell'H2 di accounts, senza carta.
+
+### Fase 7 — nginx
+
+`frontend/Dockerfile` costruisce un'app del workspace (`APP=shell|accounts|cards|loans`) e la serve con nginx su una porta interna distinta: shell `3000`, accounts `3001`, cards `3002`, loans `3003`. Nel compose default i servizi sono `shell-ui`, `accounts-ui`, `cards-ui` e `loans-ui`, immagini `easybank/*:local`. La shell legge `VITE_ACCOUNTS_REMOTE`, `VITE_CARDS_REMOTE` e `VITE_LOANS_REMOTE`; nel build del compose sono `http://localhost:3001/remoteEntry.js` e le due sorelle. Il gateway del compose ha `EAZYBANK_CORS_ALLOWED_ORIGINS=http://localhost:3000`.
+
+Health: la shell risponde `200` su `/`, i tre remote su `/remoteEntry.js`. `pnpm dev` è stato fermato: sulle porte `3000`–`3003` rispondono i container, non Node.
+
+Il percorso sportello è stato rifatto nel browser contro questi container e contro i processi Java già in ascolto sull'host (le porte `8070`–`8072`, `8080`, `8090` e `9000` erano occupate, quindi i container dei microservizi non sono stati ricreati). RabbitMQ del compose è stato avviato sulla `5672`. Con `sportello`: cliente `4284473247` (Cliente Fase Sette), carta e prestito creati, utilizzato `1000` con disponibile `99000` e «Richiesta completata», poi eliminazione della carta fino a «Carta assente». La shell non si è ricaricata. Il prestito è rimasto nell'H2 di accounts.
+
+### Fase 8 — test
+
+`pnpm test`, dalla cartella `frontend`, esegue Vitest. `@easybank/api-client` copre `ResponseDto` (anche il 417, che non è un successo), `ErrorResponseDto` e l'header `eazybank-correlation-id`. Il form cliente rifiuta nome corto, email e cellulare prima di chiamare il gateway, poi invia il cliente valido. Il form carta ricalcola il disponibile, blocca un valore incoerente e manda la `PUT` solo quando torna il plafond meno l'utilizzato. `pnpm typecheck` è verde.
+
+`pnpm test:e2e` è Playwright sul percorso sportello. Senza `EASYBANK_E2E=1` il test è saltato. Con la variabile, contro la shell nginx e il gateway già in ascolto, il percorso è passato. In `.github/workflows/frontend.yml` il job `e2e` parte solo se la variabile di repository `EASYBANK_E2E` è `true`, e non fa fallire la pipeline.
+
+### Front office, solo roadmap
+
+Aggiunta la sezione «Front office — area clienti», fasi F0–F6. È il sito del titolare del conto, origine `3010`, client Keycloak `easybank-clienti`, ruolo `CUSTOMER`, summary `GET /eazybank/me/api/summary` col cellulare preso dal token. Non riusa i remote dello sportello. Nessuna fase F è stata implementata. Il passo successivo del back office resta la fase 9.
+
+### Fase F0 — area clienti
+
+`frontend/apps/clienti` è nel workspace pnpm come `@easybank/clienti`. `pnpm --filter @easybank/clienti dev` risponde su `http://localhost:3010` con strict port. Le pagine sono `/` Entra, `/home` Rapporto, `/profilo` e `/contatti`. I default sono gateway `http://localhost:8072`, Keycloak `http://localhost:7080`, realm `master`, client `easybank-clienti`. React Router sta nell'app. Non c'è Module Federation e il browser non chiede i remote dello sportello.
+
+`pnpm typecheck` è verde. Nel browser, a 1280px e a 390px, le quattro route e i link della testata funzionano e la pagina non sborda. Una URL sconosciuta mostra «Pagina non trovata». Lo sportello su `3000` risponde ancora, titolo Easy Bank. Il server Vite dell'area clienti è rimasto acceso sulla `3010`.
+
+Prossima fase del front office: **F1** (client Keycloak `easybank-clienti`, ruolo `CUSTOMER`, `GET /eazybank/me/api/summary`). Prossima fase del back office: **fase 9**.
+
+### Fase 9 — bus RabbitMQ
+
+Il bus `eazybank.events` è acceso con `eazybank.messaging.broker=rabbit` su accounts, cards e loans. Dopo un salvataggio riuscito il servizio pubblica `accounts|cards|loans.created|updated|deleted`. Un update che risponde 417 non pubblica. `accounts.deleted` arriva sulle code durevoli `cards.accounts` e `loans.accounts`: se la carta o il prestito c'è, il servizio lo cancella e pubblica `cards.deleted` o `loans.deleted`; se non c'è, fa ack e si ferma. Tre tentativi, poi `RepublishMessageRecoverer` verso `cards.accounts.dlq` e `loans.accounts.dlq`. Il flusso email|sms di Spring Cloud Stream resta com'è. Lo stream SSE del gateway resta spento: è la fase 10.
+
+Nei tre compose, cards, loans e gatewayserver dipendono da RabbitMQ sano e hanno `SPRING_RABBITMQ_*`. Il flag del bus è solo su accounts, cards e loans. Le immagini `eazybytes/*:s13` non sono state ricostruite.
+
+Prova sul gateway, processi Maven sull'host (l'H2 in memoria di accounts e loans si è svuotato al riavvio). Cliente `4356901401`: create, carta e prestito, poi delete del cliente. Le GET `/eazybank/cards/api/fetch` e `/eazybank/loans/api/fetch` passano da 200 a 404. Sulla management `15672` si vedono `accounts.deleted`, `cards.deleted` e `loans.deleted`, con correlation id `fase9-happy`. Un update senza conto risponde 417 e non pubblica. Con cards spento, `accounts.deleted` del cliente `4356901402` resta in `cards.accounts`; al riavvio la carta sparisce senza un secondo delete. La readiness di cards resta `UP`.
+
+Prossima fase del back office: **fase 10**. La F1 del front office resta da chiedere.

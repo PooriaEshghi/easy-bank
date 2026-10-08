@@ -5,10 +5,15 @@
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm --filter \"./apps/*\" build"
+    "build": "pnpm --filter \"./apps/*\" build",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "playwright test"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

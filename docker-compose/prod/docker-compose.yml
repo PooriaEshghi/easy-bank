@@ -72,7 +72,11 @@ services:
     environment:
       SPRING_APPLICATION_NAME: "accounts"
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: eazybank
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
+      EAZYBANK_MESSAGING_BROKER: rabbit
     extends:
       file: common-config.yml
       service: microservice-eureka-config
@@ -93,8 +97,16 @@ services:
         condition: service_healthy
       eurekaserver:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "loans"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: eazybank
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
+      EAZYBANK_MESSAGING_BROKER: rabbit
     extends:
       file: common-config.yml
       service: microservice-eureka-config
@@ -115,8 +127,16 @@ services:
         condition: service_healthy
       eurekaserver:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "cards"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: eazybank
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
+      EAZYBANK_MESSAGING_BROKER: rabbit
     extends:
       file: common-config.yml
       service: microservice-eureka-config
@@ -146,8 +166,15 @@ services:
         condition: service_healthy
       cards:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "gatewayserver"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: eazybank
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
     extends:
       file: common-config.yml
       service: microservice-eureka-config
