@@ -1,10 +1,8 @@
 package com.eazybytes.accounts.messaging;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "eazybank.messaging.broker", havingValue = "off", matchIfMissing = true)
 public class NoOpDomainEventPublisher implements DomainEventPublisher {
 
     @Override

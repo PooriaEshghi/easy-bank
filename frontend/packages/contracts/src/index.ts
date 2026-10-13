@@ -55,11 +55,3 @@ export type ContactInfoDto = {
   contactDetails: Record<string, string> | null;
   onCallSupport: string[] | null;
 };
-
-export type DomainEvent = {
-  eventId: string;
-  eventType: string;
-  mobileNumber: string;
-  occurredAt: string;
-  correlationId: string | null;
-};

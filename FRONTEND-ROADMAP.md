@@ -2,7 +2,7 @@
 
 Piano per costruire il frontend di Easy Bank come shell React che compone tre microfrontend, uno per ciascun microservizio di dominio già presente nel backend: **accounts**, **cards** e **loans**. Il browser parla solo con il **gatewayserver**. I servizi Spring restano indipendenti e non conoscono il frontend.
 
-Questo documento ha due prodotti. Le fasi 0–10 sono il **back office** degli sportellisti, su `http://localhost:3000`. Il **front office** dei clienti della banca è la sezione in fondo, fasi F0–F6, su `http://localhost:3010`. Non riusa i remote dello sportello e non sostituisce le fasi 9 e 10.
+Questo documento ha due prodotti. Le fasi 0–8 sono il **back office** degli sportellisti, su `http://localhost:3000`. Il **front office** dei clienti della banca è la sezione in fondo, fasi F0–F6, su `http://localhost:3010`. Non riusa i remote dello sportello.
 
 ## Contesto backend da rispettare
 
@@ -14,7 +14,7 @@ Questo documento ha due prodotti. Le fasi 0–10 sono il **back office** degli s
 | loans | 8090 | `/eazybank/loans/**` → `lb://LOANS` |
 | cards | 9000 | `/eazybank/cards/**` → `lb://CARDS` |
 | gatewayserver | 8072 | unico entry point del frontend |
-| rabbitmq | 5672 AMQP, 15672 management | non esposto al browser; vedi fase 9 |
+| kafka | 9092 sull'host nel compose locale, 19092 nella rete `eazybank` | non esposto al browser |
 | Keycloak | 7080 | realm `master`, JWKS `http://localhost:7080/realms/master/protocol/openid-connect/certs` |
 
 Il gateway riscrive il prefisso. Una chiamata a `GET /eazybank/accounts/api/fetch` arriva al servizio accounts come `GET /api/fetch`.
@@ -105,7 +105,6 @@ Base URL di sviluppo: `http://localhost:8072`.
 | Aggiorna prestito | `PUT /eazybank/loans/api/update` | `LOANS` | body `LoansDto` |
 | Elimina prestito | `DELETE /eazybank/loans/api/delete?mobileNumber=` | `LOANS` | |
 | Contatti loans | `GET /eazybank/loans/api/contact-info` | pubblica | |
-| Eventi del cliente | `GET /eazybank/events/stream?mobileNumber=` | token valido, nessun realm role | `text/event-stream`, servito dal gateway, fase 10 |
 
 `build-info` e `java-version` restano fuori dal prodotto: sono diagnostica dei microservizi.
 
@@ -143,115 +142,9 @@ In Keycloak, realm `master`, creare un client public `easybank-shell` con redire
 
 Le letture restano utilizzabili anche senza login, in linea con `permitAll` sui `GET`.
 
-## Implementazione RabbitMQ
-
-RabbitMQ è il bus interno tra accounts, cards, loans e il gateway. Il browser continua a parlare solo con `8072`. Il messaggio porta il fatto che un `mobileNumber` è cambiato; il dato lo rilegge chi già oggi lo legge via REST. `fetchCustomerDetails` resta sulle due chiamate Feign (`CardsFeignClient`, `LoansFeignClient`).
-
-Si usa `spring-boot-starter-amqp` sul parent Boot 4.0 già presente, nei quattro servizi accounts, cards, loans e gatewayserver. Spring Cloud Stream non entra: le routing key sono nove e i listener sono tre.
-
-### Broker
-
-Servizio `rabbitmq` in `docker-compose/default/docker-compose.yml` (e gli equivalenti `qa` e `prod`):
-
-| | |
-| --- | --- |
-| Immagine | `rabbitmq:4-management` |
-| AMQP | `5672`, in rete `eazybank`; pubblicato sull'host solo nel compose locale, per i servizi avviati con Maven |
-| Management | `15672`, solo rete locale |
-| Vhost | `eazybank` |
-| Utente | `eazybank` |
-| Password | `eazybank` nel compose locale. In `qa` e `prod` la variabile `RABBITMQ_DEFAULT_PASS` è obbligatoria e ha un altro valore |
-
-Healthcheck: `rabbitmq-diagnostics -q ping`. I quattro servizi dipendono da quel healthcheck.
-
-Il config server attivo importa il git `eazybytes-config` (`spring.profiles.active: git` in `configserver`). I file `configserver/src/main/resources/config/*.yml` di questo repository non sono il profilo in esecuzione, e la password non va messa in quel git. La configurazione vive in due punti che questo progetto controlla:
-
-- `application.yml` di accounts, cards, loans e gatewayserver, per l'avvio da Maven verso `localhost:5672`;
-- nel compose, le variabili `SPRING_RABBITMQ_HOST=rabbitmq`, `SPRING_RABBITMQ_PORT=5672`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD`, `SPRING_RABBITMQ_VIRTUAL_HOST=eazybank`. L'env batte sia lo yaml locale sia un eventuale valore arrivato dal config server.
-
-```yaml
-spring:
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: eazybank
-    password: eazybank
-    virtual-host: eazybank
-    publisher-confirm-type: correlated
-    listener:
-      simple:
-        acknowledge-mode: manual
-```
-
-Lo starter registra l'indicatore di health `rabbit`. Non va aggiunto al gruppo readiness: un broker fermo porta l'health complessivo a `DOWN` e lascia la readiness `UP`, lo stesso comportamento già visto con Redis sul gateway. Le mutazioni HTTP restano servite.
-
-Converter JSON fornito dallo starter per il Jackson del parent Boot 4.0. Exchange, code e binding sono bean dichiarati all'avvio (`RabbitAdmin`): niente code create a mano dalla management UI.
-
-### Topologia
-
-Topic exchange durevole `eazybank.events`. Dead-letter exchange `eazybank.events.dlx`.
-
-| Routing key | Produttore | Quando |
-| --- | --- | --- |
-| `accounts.created` | accounts | dopo `createAccount`, con cliente e conto salvati |
-| `accounts.updated` | accounts | dopo `updateAccount` che ritorna true |
-| `accounts.deleted` | accounts | dopo `deleteAccount` |
-| `cards.created`, `cards.updated`, `cards.deleted` | cards | dopo la mutazione corrispondente |
-| `loans.created`, `loans.updated`, `loans.deleted` | loans | dopo la mutazione corrispondente |
-
-Un update che risponde **417** non pubblica: il salvataggio non c'è stato.
-
-| Coda | Binding | Consumatore |
-| --- | --- | --- |
-| `cards.accounts` | `accounts.deleted` | cards |
-| `loans.accounts` | `accounts.deleted` | loans |
-| `gatewayserver.events.<instanceId>` | `accounts.*`, `cards.*`, `loans.*` | quel processo del gateway |
-
-La coda del gateway è exclusive e auto-delete, una per processo (`instanceId` generato all'avvio). Ogni replica riceve la propria copia. Una coda condivisa consegnerebbe l'evento a una sola replica. Le DLQ sono `cards.accounts.dlq`, `loans.accounts.dlq` e `gatewayserver.events.dlq`.
-
-Il listener di cards e loans ritenta 3 volte, a 2 secondi, poi pubblica sulla DLQ (`RepublishMessageRecoverer`). Il messaggio resta leggibile dalla management UI. Il listener del gateway fa ack anche se nessun browser è collegato: l'aggiornamento perso si recupera alla prossima GET. In DLQ ci finisce un errore del consumatore, non l'assenza di abbonati.
-
-### Contratto del messaggio
-
-Body JSON. Niente nome, email, importi o numeri carta/prestito: chi consuma, se gli serve il dato, chiama la GET che già esiste.
-
-| Campo | Regola |
-| --- | --- |
-| `eventId` | UUID generato dal produttore |
-| `eventType` | la routing key |
-| `mobileNumber` | 10 cifre |
-| `occurredAt` | ISO-8601 |
-| `correlationId` | l'`eazybank-correlation-id` della richiesta HTTP che ha eseguito la mutazione |
-
-Lo stesso valore viaggia nell'header AMQP `eazybank-correlation-id`. In caso di errore e di approdo in DLQ il listener lo scrive nel log.
-
-La pubblicazione avviene dopo il `save` o il `delete` JPA riuscito, nella stessa richiesta. Se il confirm del broker fallisce, la risposta HTTP resta 201 o 200: la scrittura è già fatta. Il fallimento si logga con il correlation id. Un outbox transazionale non fa parte di questa implementazione.
-
-### Cancellazione a cascata
-
-Oggi `deleteAccount` rimuove cliente e conto e lascia carta e prestito. Il listener di cards e quello di loans, su `accounts.deleted`, chiamano il metodo di dominio già usato da `DELETE /api/delete?mobileNumber=`. Se la riga non c'è, ack e stop: la cancellazione è idempotente. Se la riga c'era, dopo la delete locale il servizio pubblica `cards.deleted` o `loans.deleted`. Nessun servizio è in ascolto delle proprie routing key.
-
-### Flusso verso la shell
-
-Il gateway è già WebFlux e serve lui stesso, senza una riga nuova in `eazyBankRouteConfig`:
-
-`GET /eazybank/events/stream?mobileNumber=`
-
-`text/event-stream`. Il `@RabbitListener` consegna a un sink in memoria indicizzato per cellulare e fa ack; il controller restituisce il `Flux` di quella richiesta. Alla chiusura della connessione il sink della richiesta si sgancia. La consegna al sink non gira sul thread di Netty.
-
-In `SecurityConfig` il matcher di questo path va registrato prima di `pathMatchers(HttpMethod.GET).permitAll()`, altrimenti il primo matcher rende pubblico anche lo stream. Regola: `authenticated()`, un JWT valido, senza realm role `ACCOUNTS`, `CARDS` o `LOANS`. Le altre GET restano pubbliche.
-
-`EventSource` non può inviare `Authorization`. Il client è `fetch` con lettura dello stream, gli header già previsti da `api-client` (`Authorization`, `eazybank-correlation-id`) e `AbortSignal` alla chiusura della pagina. CORS di fase 1 copre già questi header; lo stream non ne aggiunge.
-
-La shell, sulla route `/clienti/:mobileNumber`, tiene un solo stream. All'evento pubblica sul bus di `@easybank/api-client` il trio `mobileNumber`, `eventType`, `correlationId`. La dashboard invalida `fetchCustomerDetails`. Il remote il cui nome sta in `eventType` (`accounts`, `cards` o `loans`) invalida la propria query TanStack. Gli altri due non ricaricano.
-
-Il bus funziona solo se shell e remote condividono lo stesso modulo. In `vite.config.ts` dei quattro frontend, `shared` di Module Federation ha già `react` e `react-dom` come singleton: va aggiunto `@easybank/api-client` con `singleton: true`. Senza quella riga ogni remote ha una copia del bus e l'evento della shell non arriva.
-
-Se il broker o lo stream non rispondono, la mutazione HTTP resta valida. La shell segnala lo stream interrotto, correlation id visibile, e il prossimo ingresso sulla dashboard rilegge via REST.
-
 ## Fasi
 
-Ogni fase si chiude quando i criteri di quella fase sono veri nel browser, contro il backend locale già avviato (configserver, eureka, accounts, loans, cards, gateway, Keycloak). Dalla fase 9 la stack include anche RabbitMQ.
+Ogni fase si chiude quando i criteri di quella fase sono veri nel browser, contro il backend locale già avviato (configserver, eureka, accounts, loans, cards, gateway, Keycloak, Kafka).
 
 ### Fase 0 — Scheletro del workspace
 
@@ -360,29 +253,6 @@ Stato: **fatta il 2026-10-06**.
 - Un test di componente per il form cliente (validazione 5–30 / email / 10 cifre) e uno per il form importi carta.
 - Una prova end-to-end del percorso sportello (Playwright) contro gateway e Keycloak locali, marcata come opzionale in CI finché la stack non è disponibile nel runner.
 
-### Fase 9 — RabbitMQ tra i microservizi
-
-Stato: **fatta il 2026-10-06**.
-
-Dipende dai tre servizi di dominio e dal compose locale. Può partire prima del frontend.
-
-- Servizio `rabbitmq` nei tre compose, healthcheck, env `SPRING_RABBITMQ_*` su accounts, cards, loans e gatewayserver.
-- `spring-boot-starter-amqp` e i bean di exchange, code, binding e DLQ.
-- Publish sulle mutazioni riuscite, con il contratto descritto sopra. Il 417 non pubblica.
-- Listener `accounts.deleted` in cards e in loans, idempotente, con i tre tentativi e la DLQ.
-
-Criterio: creare un cliente, creare una carta, cancellare il cliente da accounts. `GET /eazybank/cards/api/fetch` non trova più la carta. Sulla management `15672` si vedono `accounts.deleted` consegnato a `cards.accounts` e `cards.deleted` pubblicato. Con cards spento prima della cancellazione, il messaggio resta in coda; a cards riacceso la carta sparisce senza un secondo delete.
-
-### Fase 10 — Stream degli eventi nella shell
-
-Dipende dalla fase 1 (CORS e token), dalla fase 2 (dashboard) e dalle fasi 3–5 (una mutazione visibile). Il punto naturale è dopo la fase 6.
-
-- `GET /eazybank/events/stream` sul gateway, matcher `authenticated()` prima del `permitAll` dei GET.
-- Tipo `DomainEvent` in `@easybank/contracts`. Lettura dello stream in `@easybank/api-client`, con `fetch` e `AbortSignal`.
-- `@easybank/api-client` singleton nella config Module Federation di shell, accounts, cards e loans.
-- La shell si iscrive al cliente aperto e pubblica sul bus. Dashboard e remote del dominio indicato invalidano la query.
-
-Criterio: due schede sullo stesso cellulare, stesso utente loggato. In una si aggiorna un importo della carta. L'altra, senza ricaricare la pagina, mostra l'importo nuovo in dashboard e nel remote cards. Con RabbitMQ spento la `PUT` riesce comunque e la seconda scheda si aggiorna al successivo ingresso sulla dashboard.
 
 ## Ordine di lavoro consigliato
 
@@ -396,13 +266,10 @@ Fase 0 workspace
             → Fase 6 rifinitura
               → Fase 7 docker
                 → Fase 8 test
-                  → Fase 9 RabbitMQ
-                    → Fase 10 stream sulla shell
 ```
 
 Le fasi 4 e 5 sono indipendenti tra loro e si possono alternare. La 3 viene prima perché senza cliente non esistono carta e prestito.
 
-La fase 9 non ha bisogno delle app React: può avanzare appena accounts, cards, loans e il compose locale ci sono. La fase 10 ha bisogno della dashboard e dei tre remote, quindi sta dopo la fase 6 anche se nel diagramma è in coda alla 9.
 
 Il front office è un binario a parte. Può partire con le fasi 0–8 già chiuse. La F1 tocca gateway e Keycloak, non i remote dello sportello.
 
@@ -422,15 +289,11 @@ Fase F0 confine
 - Un BFF Node. Il gateway e `fetchCustomerDetails` bastano.
 - Condivisione di un design system pubblicato su un registry: il pacchetto `ui` del workspace è sufficiente.
 - Operazioni non presenti nelle API: elenco clienti, movimenti, pagamenti, bonifici.
-- Request/reply su RabbitMQ al posto delle Feign di `fetchCustomerDetails`.
-- Outbox transazionale tra il commit JPA e il confirm del broker.
-- Connessioni AMQP aperte da shell o dai remote. La porta `5672` resta interna.
 
 ## Definizione di finito
 
 Il frontend è pronto quando uno sportellista, dal solo `http://localhost:3000`, cerca un cliente per cellulare, legge il riepilogo aggregato e — se il suo token ha i ruoli — crea e aggiorna conto, carta e prestito passando esclusivamente da `http://localhost:8072`, con un microfrontend isolato per ciascun microservizio Spring.
 
-Con la fase 10, una seconda scheda aperta sullo stesso cliente vede create, update e delete senza ricaricare la shell. La cancellazione del cliente, via `accounts.deleted`, toglie anche carta e prestito.
 
 ## Front office — area clienti
 
@@ -478,8 +341,6 @@ Utente di prova, password `easybank`: `cliente`. Realm role `CUSTOMER`. Attribut
 - Nessun `POST`, `PUT` o `DELETE` sotto `/eazybank/me/**` in queste fasi.
 
 CORS del gateway, accanto all'origine dello sportello: `http://localhost:3010`. Stessi metodi e header di oggi (`Authorization`, `Content-Type`, `eazybank-correlation-id`). La proprietà è già una lista separata da virgole (`EAZYBANK_CORS_ALLOWED_ORIGINS`).
-
-Lo stream `GET /eazybank/events/stream` della fase 10 **non** si collega dall'area clienti. Quel matcher è `authenticated()` senza controllo del cellulare: un token `CUSTOMER` potrebbe chiedere gli eventi di un altro numero. Si aggiunge all'area clienti solo quando il gateway applica la stessa regola del claim.
 
 ### Fase F0 — Confine dell'app
 
@@ -565,7 +426,6 @@ Non entra in F6: scelta del tipo di conto, carta, prestito, documenti, pagamento
 - Modifica di plafond, utilizzato, importo prestito, filiale, nome conto.
 - Eliminazione di carta, prestito o conto.
 - Movimenti, pagamenti, bonifici, elenco clienti.
-- `GET /eazybank/events/stream` prima del controllo del claim.
 - Autenticazione dentro accounts, cards e loans. Resta sul gateway.
 - Un BFF Node.
 - Stessa origine e stesso client Keycloak dello sportello.
@@ -580,10 +440,10 @@ Prossima sessione: **fase 1** (client HTTP, CORS sul gateway, login Keycloak nel
 
 ### Backend e Docker
 
-- `docker-compose/default/docker-compose.yml` punta a `eazybytes/<servizio>:s13`. La stack è stata avviata: configserver **8071**, eureka **8070**, accounts **8080**, loans **8090**, cards **9000** risultano healthy. Il gateway **8072** è up e non ha healthcheck nel compose.
+- `docker-compose/default/docker-compose.yml` punta a `eazybytes/<servizio>:s14`. La stack è stata avviata: configserver **8071**, eureka **8070**, accounts **8080**, loans **8090**, cards **9000** risultano healthy. Il gateway **8072** è up e non ha healthcheck nel compose.
 - L'actuator generale del gateway è `DOWN` perché Redis, configurato su `localhost:6379` dentro il container, rifiuta la connessione. La readiness è `UP` e le rotte verso i microservizi non passano da Redis.
-- Le immagini locali `s11` erano tenute da container fermi (`configserver-ms`, `eurekaserver-ms`, `accounts-ms`, `loans-ms`, `cards-ms`, `gatewayserver-ms`). I tag `s9` non erano mai stati scaricati in locale. A fine giornata in locale restano solo i tag `s13`.
-- Tag per Docker Hub, utente `pooriaeshghi`: accounts, cards, loans, configserver e gatewayserver `s13` coincidono con le immagini `eazybytes`. **`pooriaeshghi/eurekaserver:s13` è sbagliato**: ha l'id `843b81af2d81`, che è configserver. L'Eureka vera è `eazybytes/eurekaserver:s13` (`42d280b62902`). Prima di un push va rifatto il tag. Il push su Docker Hub non risulta chiuso in questa sessione.
+- Le immagini locali `s11` erano tenute da container fermi (`configserver-ms`, `eurekaserver-ms`, `accounts-ms`, `loans-ms`, `cards-ms`, `gatewayserver-ms`). I tag `s9` non erano mai stati scaricati in locale. A fine giornata in locale restano solo i tag `s14`.
+- Tag per Docker Hub, utente `pooriaeshghi`: accounts, cards, loans, configserver e gatewayserver `s14` coincidono con le immagini `eazybytes`. **`pooriaeshghi/eurekaserver:s14` è sbagliato**: ha l'id `843b81af2d81`, che è configserver. L'Eureka vera è `eazybytes/eurekaserver:s14` (`42d280b62902`). Prima di un push va rifatto il tag. Il push su Docker Hub non risulta chiuso in questa sessione.
 - Keycloak di compose (`quay.io/keycloak/keycloak:26.4.7`, container `keycloak`) è stato aggiunto e poi rimosso. Si usa il container già esistente `affectionate_easley` (`keycloak-local:26.3.2`), porta host `7080`.
 - Il gateway nel container non raggiunge Keycloak su `localhost:7080`. In compose, sul servizio `gatewayserver`, c'è `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://host.docker.internal:7080/realms/master/protocol/openid-connect/certs`. Dal container quella URL risponde 200. Il container `gatewayserver-ms` è stato ricreato con questa variabile.
 
@@ -635,15 +495,13 @@ Prossima sessione invariata: **fase 1**.
 
 ## Diario di lavoro — 2026-09-28
 
-Al mattino è stata aggiunta al piano l'implementazione RabbitMQ: bus interno (fase 9) e stream SSE sul gateway consumato dalla shell (fase 10). In quel momento nessun codice e nessun compose erano stati modificati. La fase 1 del frontend resta il passo successivo di quella roadmap.
-
-Nel pomeriggio il lavoro è stato un altro: il servizio `message` della section 13 del corso (`microservices-4.0.0\section_13`). È un progetto di studio: non si continua una feature se non viene chiesta.
+Il lavoro è il servizio `message` della section 13 del corso (`microservices-4.0.0\section_13`). È un progetto di studio: non si continua una feature se non viene chiesta. La fase 1 del frontend resta il passo successivo.
 
 ### Servizio message
 
-Modulo `message/`, porta `9010`, immagine prevista `eazybytes/message:s13`. Boot 4.0.0, Spring Cloud 2025.1.0. Non si registra su Eureka e non ha database.
+Modulo `message/`, porta `9010`, immagine prevista `eazybytes/message:s14`. Boot 4.0.0, Spring Cloud 2025.1.0. Non si registra su Eureka e non ha database.
 
-Dipendenze: `spring-boot-starter-amqp`, `spring-rabbit-stream`, `spring-cloud-function-context`, `spring-cloud-starter-function-web`, `spring-cloud-stream`, `spring-cloud-stream-binder-rabbit`. Nei test c'è `spring-cloud-stream-test-binder`.
+Dipendenze: `spring-cloud-stream` e `spring-cloud-stream-binder-kafka`. Nei test c'è `spring-cloud-stream-test-binder`.
 
 Function composte con `spring.cloud.function.definition: email|sms`:
 
@@ -652,14 +510,14 @@ Function composte con `spring.cloud.function.definition: email|sms`:
 
 Binding:
 
-| Binding | Destinazione | Coda |
-| --- | --- | --- |
-| `emailsms-in-0` | exchange `send-communication` | `send-communication.message` |
-| `emailsms-out-0` | exchange `communication-sent` | la consuma accounts |
+| Binding | Topic Kafka |
+| --- | --- |
+| `emailsms-in-0` | `send-communication` |
+| `emailsms-out-0` | `communication-sent` |
 
-`spring-cloud-starter-function-web` espone le function anche in HTTP. `POST http://localhost:9010/email` esegue solo `email` sul thread Tomcat `nio-9010-exec-1` e risponde con lo stesso JSON. `POST /email|sms` esegue anche `sms` e risponde con il numero di conto. Queste POST non passano da RabbitMQ e non aggiornano `communicationSw`.
+`POST http://localhost:9010/email` esegue solo `email` e risponde con lo stesso JSON. `POST /email|sms` esegue anche `sms` e risponde con il numero di conto. Queste POST non passano da Kafka e non aggiornano `communicationSw`.
 
-Il test `MessageApplicationTests.contextLoads` è verde. Con il broker spento il contesto parte lo stesso e il listener segnala `Connection refused` su `localhost:5672`.
+Il test `MessageApplicationTests.contextLoads` è verde. Con Kafka spento il contesto parte lo stesso e il listener segnala il broker irraggiungibile su `localhost:9092`.
 
 ### Accounts, il produttore
 
@@ -676,68 +534,45 @@ Esempio visto nel log:
 }
 ```
 
-La function `updateCommunication` consuma `communication-sent` (coda `communication-sent.accounts`) e, con quel numero di conto, mette `communicationSw` a `true`. Colonna `communication_sw` aggiunta su `Accounts` e in `schema.sql`.
+La function `updateCommunication` consuma il topic `communication-sent` e, con quel numero di conto, mette `communicationSw` a `true`. Colonna `communication_sw` aggiunta su `Accounts` e in `schema.sql`.
 
 `AccountsApplicationTests` è verde. Durante il test il processo si è registrato su Eureka locale e poi si è deregistrato.
-
-`RabbitMessagingConfig` di accounts non compilava: le parentesi graffe erano raddoppiate (`{{`). Sono state rimesse singole.
 
 ### Flusso sul broker
 
 ```text
 POST /api/create su accounts
   → salva cliente e conto
-  → exchange send-communication
-      → coda send-communication.message
-          → email (log + DTO)
-          → sms (log + numero di conto)
-  → exchange communication-sent
-      → coda communication-sent.accounts
-          → updateCommunication
-          → communicationSw = true
+  → topic send-communication
+      → email (log + DTO)
+      → sms (log + numero di conto)
+  → topic communication-sent
+      → updateCommunication
+      → communicationSw = true
 ```
 
-RabbitMQ trasporta JSON. I due servizi si incontrano solo sui nomi `send-communication` e `communication-sent`.
-
-### Compilazione di loans, cards e gateway
-
-Loans e cards non partivano dall'IDE: il package `messaging` usa Spring AMQP, ma `spring-boot-starter-amqp` non era nel pom. Aggiunta la dipendenza. `RetryInterceptorBuilder.maxAttempts` non esiste in Spring AMQP 4: nei due `RabbitMessagingConfig` è diventato `maxRetries(3)`.
-
-Il gateway non compilava in clean per lo stesso motivo, più Lombok su `DomainEvent` senza dipendenza né annotation processor. Aggiunti `spring-boot-starter-amqp`, `lombok` e il path del compiler plugin. `clean compile` di loans, cards e gateway è verde.
-
-Una rotta `/eazybank/message/**` era stata messa sul gateway e poi tolta: `message` non ha API REST da inoltrare.
+Kafka trasporta JSON. I due servizi si incontrano solo sui topic `send-communication` e `communication-sent`.
 
 ### Docker
 
-Nei compose `default`, `qa` e `prod` c'è il servizio `rabbitmq`, immagine `rabbitmq:4-management`, container `rabbitmq`. Non è un microservizio Maven.
+Nei compose `default`, `qa` e `prod` il broker è Kafka 3.9.1, container `kafka`. Nel compose locale pubblica `9092` sull'host. In `qa` e `prod` resta sulla rete `eazybank` alla porta `19092`. accounts e message dipendono da Kafka healthy. message non ha healthcheck HTTP e non si registra su Eureka.
 
-| | default | qa e prod |
-| --- | --- | --- |
-| AMQP | `5672` pubblicato sull'host | solo rete `eazybank` |
-| Management | `15672` | non pubblicato |
-| Utente / vhost | `eazybank` / `eazybank` | uguale |
-| Password | `eazybank` | variabile obbligatoria `RABBITMQ_DEFAULT_PASS` |
-
-Nel corso la password è `guest` e il vhost è quello di default. Qui si usa `eazybank` perché è il broker di questo compose. `application.yml` di accounts e message punta a `localhost:5672` con le stesse credenziali; nel container l'host è sovrascritto con `SPRING_RABBITMQ_HOST=rabbitmq`. accounts dipende da RabbitMQ healthy. message dipende solo da RabbitMQ, senza healthcheck HTTP e senza Eureka.
-
-Le immagini `eazybytes/*:s13` già costruite non contengono il codice di oggi. Per averlo in Docker serve un build Jib nuovo. I container `configserver-ms`, `eurekaserver-ms`, `accounts-ms`, `loans-ms`, `cards-ms` e `gatewayserver-ms` a fine sessione erano spenti.
+Le immagini `eazybytes/*:s14` già costruite non contengono il codice di oggi. Per averlo in Docker serve un build Jib nuovo. I container `configserver-ms`, `eurekaserver-ms`, `accounts-ms`, `loans-ms`, `cards-ms` e `gatewayserver-ms` a fine sessione erano spenti.
 
 ### Ordine di avvio a mano
 
-1. RabbitMQ (`docker compose up -d rabbitmq` da `docker-compose/default`).
+1. Kafka (`docker compose up -d kafka` da `docker-compose/default`).
 2. Config server, porta `8071`.
 3. Eureka, porta `8070`.
 4. accounts `8080`, loans `8090`, cards `9000`, anche insieme.
-5. message. Gli basta RabbitMQ, può partire insieme al punto 4.
+5. message. Gli basta Kafka, può partire insieme al punto 4.
 6. Gateway, porta `8072`, quando i tre microservizi sono su Eureka.
 
 Keycloak resta il container `affectionate_easley` sulla porta `7080`, già acceso. Serve per le chiamate con token. Le GET pubbliche no.
 
-A fine sessione, avviati dall'IDE, c'erano config server, Eureka, accounts e message, più il container `rabbitmq` healthy. Loans, cards e gateway erano spenti: l'errore era di compilazione, ora risolto, e vanno riavviati dall'IDE.
+A fine sessione, avviati dall'IDE, c'erano config server, Eureka, accounts e message, più il container `kafka` healthy. Loans, cards e gateway erano spenti e vanno riavviati dall'IDE.
 
-### Fuori da questa sessione
-
-Il listener `accounts.deleted` di cards e loans, e lo stream SSE del gateway, restano il disegno della fase 9 e 10. Si accendono solo con `eazybank.messaging.broker=rabbit`. Non sono il flusso `email|sms` della section 13. Il frontend non è stato toccato.
+Il flusso email|sms è Spring Cloud Stream su Kafka. Il frontend non è stato toccato.
 
 ## Diario di lavoro — 2026-10-01
 
@@ -745,7 +580,7 @@ Fase 1 chiusa. Prossima sessione: **fase 2** (ricerca per cellulare e dashboard 
 
 ### Client e shell
 
-- `@easybank/contracts` descrive cliente, conto, carta, prestito, dettaglio aggregato, `ResponseDto`, `ErrorResponseDto` e `ContactInfoDto`. `DomainEvent` resta dov'era, per la fase 10.
+- `@easybank/contracts` descrive cliente, conto, carta, prestito, dettaglio aggregato, `ResponseDto`, `ErrorResponseDto` e `ContactInfoDto`.
 - `@easybank/api-client` distingue `ResponseDto` (compreso il 417), `ErrorResponseDto`, la mappa di validazione e il body vuoto. Ogni richiesta manda `eazybank-correlation-id`. Il pulsante Riprova riusa lo stesso id.
 - `@easybank/auth` usa `keycloak-js` 26: login, logout, refresh, ruoli del realm. Il client public è `easybank-shell`, redirect `http://localhost:3000/*`, PKCE S256.
 - La shell mostra Easy Bank, l'utente, i ruoli e Entra/Esci. Da loggato chiama `GET /eazybank/accounts/api/contact-info` e mostra il JSON insieme al correlation id.
@@ -770,7 +605,7 @@ Container `affectionate_easley` sulla porta `7080`. Client `easybank-shell` crea
 
 ### Verifica
 
-Avviati per la prova: configserver `8071`, Eureka `8070`, accounts `8080` e gateway `8072` da Maven; RabbitMQ e Keycloak dai container già presenti; `pnpm dev` sulle porte `3000`–`3003`. Loans, cards e message restano spenti.
+Avviati per la prova: configserver `8071`, Eureka `8070`, accounts `8080` e gateway `8072` da Maven; Kafka e Keycloak dai container già presenti; `pnpm dev` sulle porte `3000`–`3003`. Loans, cards e message restano spenti.
 
 Dal browser, con `sportello`, la shell ha chiamato contact-info con il Bearer. La risposta è il JSON prod (`Hey, welcome to EazyBank accounts related prod APIs`). Nel log del gateway compare `eazybank-correlation-id` `8408028a-87a0-44cf-8738-18fcff11d01d`. I tre remote mostrano il proprio nome. `pnpm typecheck` e `pnpm build` sono verdi.
 
@@ -780,7 +615,7 @@ Fase 2 chiusa. Prossima sessione: **fase 3** (creazione, modifica ed eliminazion
 
 La shell ha tre pagine. `/` cerca per cellulare e rifiuta un valore che non ha 10 cifre, senza chiamare il gateway. `/clienti/nuovo` è il placeholder del remote accounts. `/clienti/:mobileNumber` chiama `GET /eazybank/accounts/api/fetchCustomerDetails` e mostra nome, email, cellulare e le tre schede. Carta o prestito assenti hanno il link Crea verso il remote corrispondente (`#remote-cards`, `#remote-loans`). Il conto assente punta a `/clienti/nuovo`. Un 404 mostra «Cliente non trovato» e lascia l'header al suo posto. Un 500 o un errore di rete mostra il messaggio nel riquadro e `eazybank-correlation-id`. Riprova riusa lo stesso id.
 
-Senza carta o prestito, accounts rispondeva 500 `No fallback available`: OpenFeign ha il circuit breaker acceso e loans/cards rispondono 404. Aggiunti `LoansFallback` e `CardsFallback`, come nel corso: restituiscono `null` e il servizio non copia il DTO. Immagine `eazybytes/accounts:s13` ricostruita con Jib e container `accounts-ms` ricreato. Il database H2 in memoria si è svuotato. Cliente di prova ricreato: `4354437687`, Sportello Demo, conto Savings. La GET sul gateway risponde 200 con `cardsDto` e `loansDto` a `null`.
+Senza carta o prestito, accounts rispondeva 500 `No fallback available`: OpenFeign ha il circuit breaker acceso e loans/cards rispondono 404. Aggiunti `LoansFallback` e `CardsFallback`, come nel corso: restituiscono `null` e il servizio non copia il DTO. Immagine `eazybytes/accounts:s14` ricostruita con Jib e container `accounts-ms` ricreato. Il database H2 in memoria si è svuotato. Cliente di prova ricreato: `4354437687`, Sportello Demo, conto Savings. La GET sul gateway risponde 200 con `cardsDto` e `loansDto` a `null`.
 
 Verifica nel browser (Chrome headless) contro la stack Docker già avviata e `pnpm dev` sulle porte 3000–3003. Cellulare `0000000000`: cliente non trovato. Cellulare `4354437687`: nome, email, Savings, `123 Main Street, New York`, carta assente, prestito assente, i tre remote visibili. `/clienti/12` resta nel layout con il messaggio delle 10 cifre. A 390px la ricerca e la dashboard non sbordano. `pnpm typecheck` è verde.
 
@@ -796,7 +631,7 @@ Verifica nel browser, stack Docker invariata. Senza login, `/clienti/nuovo` non 
 
 ## Diario di lavoro — 2026-10-06
 
-Fasi 4, 5, 6, 7, 8 e 9 chiuse. Prossima sessione del back office: **fase 10** (stream SSE sulla shell). Lo stile resta fuori. La fase 9 è il bus della roadmap, distinto dal flusso email|sms già presente con Spring Cloud Stream.
+Fasi 4, 5, 6, 7 e 8 chiuse. Lo stile resta fuori. Il flusso email|sms resta Spring Cloud Stream su Kafka.
 
 ### Remote cards e loans
 
@@ -814,11 +649,11 @@ Un aggiornamento della dashboard non smonta più i remote. Prima il refresh azze
 
 ### Gateway
 
-La prima `POST /eazybank/accounts/api/create` dopo l'avvio superava il secondo e il gateway rispondeva 504, anche se accounts aveva già salvato il cliente. In `docker-compose/default/docker-compose.yml`, sul servizio `gatewayserver`, c'è `RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION=10s`, come il customizer del corso. Il container `gatewayserver-ms` è stato ricreato con questa variabile. L'immagine `eazybytes/gatewayserver:s13` non è stata ricostruita.
+La prima `POST /eazybank/accounts/api/create` dopo l'avvio superava il secondo e il gateway rispondeva 504, anche se accounts aveva già salvato il cliente. In `docker-compose/default/docker-compose.yml`, sul servizio `gatewayserver`, c'è `RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION=10s`, come il customizer del corso. Il container `gatewayserver-ms` è stato ricreato con questa variabile. L'immagine `eazybytes/gatewayserver:s14` non è stata ricostruita.
 
 ### Verifica
 
-Stack Docker riavviata (configserver, Eureka, RabbitMQ, accounts, loans, cards, gateway) più Keycloak `affectionate_easley` sulla porta `7080`. `pnpm dev` sulle porte 3000–3003. `pnpm typecheck` è verde.
+Stack Docker riavviata (configserver, Eureka, Kafka, accounts, loans, cards, gateway) più Keycloak `affectionate_easley` sulla porta `7080`. `pnpm dev` sulle porte 3000–3003. `pnpm typecheck` è verde.
 
 Nel browser, con `sportello`: un cellulare di meno di 10 cifre non chiama il gateway; `/contatti` mostra i tre pannelli e il correlation id; il cliente `4356416984` (Cliente Fase Quattro) nasce e la dashboard lo rilegge con Savings. Carta e prestito compaiono nelle tre schede, con i messaggi «Carta creata» e «Prestito creato». Un disponibile incoerente non parte. L'utilizzato `1000` salva e la scheda mostra disponibile `99000`. A 390px la dashboard non sborda. Con `operatore-conti` carta e prestito si leggono e non ci sono Salva, Elimina o Crea. La conferma di eliminazione della carta lascia «Carta assente» senza ricaricare la shell.
 
@@ -830,7 +665,7 @@ Con `loans-ms` fermo, la dashboard del cliente resta aperta, accounts e cards ri
 
 Health: la shell risponde `200` su `/`, i tre remote su `/remoteEntry.js`. `pnpm dev` è stato fermato: sulle porte `3000`–`3003` rispondono i container, non Node.
 
-Il percorso sportello è stato rifatto nel browser contro questi container e contro i processi Java già in ascolto sull'host (le porte `8070`–`8072`, `8080`, `8090` e `9000` erano occupate, quindi i container dei microservizi non sono stati ricreati). RabbitMQ del compose è stato avviato sulla `5672`. Con `sportello`: cliente `4284473247` (Cliente Fase Sette), carta e prestito creati, utilizzato `1000` con disponibile `99000` e «Richiesta completata», poi eliminazione della carta fino a «Carta assente». La shell non si è ricaricata. Il prestito è rimasto nell'H2 di accounts.
+Il percorso sportello è stato rifatto nel browser contro questi container e contro i processi Java già in ascolto sull'host (le porte `8070`–`8072`, `8080`, `8090` e `9000` erano occupate, quindi i container dei microservizi non sono stati ricreati). Con `sportello`: cliente `4284473247` (Cliente Fase Sette), carta e prestito creati, utilizzato `1000` con disponibile `99000` e «Richiesta completata», poi eliminazione della carta fino a «Carta assente». La shell non si è ricaricata. Il prestito è rimasto nell'H2 di accounts.
 
 ### Fase 8 — test
 
@@ -840,7 +675,7 @@ Il percorso sportello è stato rifatto nel browser contro questi container e con
 
 ### Front office, solo roadmap
 
-Aggiunta la sezione «Front office — area clienti», fasi F0–F6. È il sito del titolare del conto, origine `3010`, client Keycloak `easybank-clienti`, ruolo `CUSTOMER`, summary `GET /eazybank/me/api/summary` col cellulare preso dal token. Non riusa i remote dello sportello. Nessuna fase F è stata implementata. Il passo successivo del back office resta la fase 9.
+Aggiunta la sezione «Front office — area clienti», fasi F0–F6. È il sito del titolare del conto, origine `3010`, client Keycloak `easybank-clienti`, ruolo `CUSTOMER`, summary `GET /eazybank/me/api/summary` col cellulare preso dal token. Non riusa i remote dello sportello. Nessuna fase F è stata implementata. Il back office è chiuso fino alla fase 8.
 
 ### Fase F0 — area clienti
 
@@ -848,14 +683,4 @@ Aggiunta la sezione «Front office — area clienti», fasi F0–F6. È il sito 
 
 `pnpm typecheck` è verde. Nel browser, a 1280px e a 390px, le quattro route e i link della testata funzionano e la pagina non sborda. Una URL sconosciuta mostra «Pagina non trovata». Lo sportello su `3000` risponde ancora, titolo Easy Bank. Il server Vite dell'area clienti è rimasto acceso sulla `3010`.
 
-Prossima fase del front office: **F1** (client Keycloak `easybank-clienti`, ruolo `CUSTOMER`, `GET /eazybank/me/api/summary`). Prossima fase del back office: **fase 9**.
-
-### Fase 9 — bus RabbitMQ
-
-Il bus `eazybank.events` è acceso con `eazybank.messaging.broker=rabbit` su accounts, cards e loans. Dopo un salvataggio riuscito il servizio pubblica `accounts|cards|loans.created|updated|deleted`. Un update che risponde 417 non pubblica. `accounts.deleted` arriva sulle code durevoli `cards.accounts` e `loans.accounts`: se la carta o il prestito c'è, il servizio lo cancella e pubblica `cards.deleted` o `loans.deleted`; se non c'è, fa ack e si ferma. Tre tentativi, poi `RepublishMessageRecoverer` verso `cards.accounts.dlq` e `loans.accounts.dlq`. Il flusso email|sms di Spring Cloud Stream resta com'è. Lo stream SSE del gateway resta spento: è la fase 10.
-
-Nei tre compose, cards, loans e gatewayserver dipendono da RabbitMQ sano e hanno `SPRING_RABBITMQ_*`. Il flag del bus è solo su accounts, cards e loans. Le immagini `eazybytes/*:s13` non sono state ricostruite.
-
-Prova sul gateway, processi Maven sull'host (l'H2 in memoria di accounts e loans si è svuotato al riavvio). Cliente `4356901401`: create, carta e prestito, poi delete del cliente. Le GET `/eazybank/cards/api/fetch` e `/eazybank/loans/api/fetch` passano da 200 a 404. Sulla management `15672` si vedono `accounts.deleted`, `cards.deleted` e `loans.deleted`, con correlation id `fase9-happy`. Un update senza conto risponde 417 e non pubblica. Con cards spento, `accounts.deleted` del cliente `4356901402` resta in `cards.accounts`; al riavvio la carta sparisce senza un secondo delete. La readiness di cards resta `UP`.
-
-Prossima fase del back office: **fase 10**. La F1 del front office resta da chiedere.
+Prossima fase del front office: **F1** (client Keycloak `easybank-clienti`, ruolo `CUSTOMER`, `GET /eazybank/me/api/summary`). La F1 del front office resta da chiedere.

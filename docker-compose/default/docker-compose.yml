@@ -1,6 +1,6 @@
 services:
   configserver:
-    image: "eazybytes/configserver:s13"
+    image: "eazybytes/configserver:s14"
     container_name: configserver-ms
     ports:
       - "8071:8071"
@@ -15,7 +15,7 @@ services:
       service: microservice-base-config
 
   eurekaserver:
-    image: "eazybytes/eurekaserver:s13"
+    image: "eazybytes/eurekaserver:s14"
     container_name: eurekaserver-ms
     ports:
       - "8070:8070"
@@ -34,28 +34,44 @@ services:
     environment:
       SPRING_APPLICATION_NAME: "eurekaserver"
 
-  rabbitmq:
-    image: "rabbitmq:4-management"
-    container_name: rabbitmq
+  kafka:
+    image: apache/kafka:3.9.1
+    hostname: kafka
+    container_name: kafka
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "9092:9092"
     environment:
-      RABBITMQ_DEFAULT_USER: eazybank
-      RABBITMQ_DEFAULT_PASS: eazybank
-      RABBITMQ_DEFAULT_VHOST: eazybank
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: CONTROLLER://:29093,PLAINTEXT_HOST://:9092,PLAINTEXT://:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
       interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      timeout: 10s
+      retries: 12
+      start_period: 25s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     extends:
       file: common-config.yml
-      service: microservice-base-config
+      service: network-deploy-service
 
   accounts:
-    image: "eazybytes/accounts:s13"
+    image: "eazybytes/accounts:s14"
     container_name: accounts-ms
     ports:
       - "8080:8080"
@@ -70,23 +86,18 @@ services:
         condition: service_healthy
       eurekaserver:
         condition: service_healthy
-      rabbitmq:
+      kafka:
         condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "accounts"
       OTEL_SERVICE_NAME: "accounts"
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_RABBITMQ_PORT: "5672"
-      SPRING_RABBITMQ_USERNAME: eazybank
-      SPRING_RABBITMQ_PASSWORD: eazybank
-      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
-      EAZYBANK_MESSAGING_BROKER: rabbit
+      SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS: kafka:19092
     extends:
       file: common-config.yml
       service: microservice-eureka-config
 
   loans:
-    image: "eazybytes/loans:s13"
+    image: "eazybytes/loans:s14"
     container_name: loans-ms
     ports:
       - "8090:8090"
@@ -101,22 +112,14 @@ services:
         condition: service_healthy
       eurekaserver:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "loans"
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_RABBITMQ_PORT: "5672"
-      SPRING_RABBITMQ_USERNAME: eazybank
-      SPRING_RABBITMQ_PASSWORD: eazybank
-      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
-      EAZYBANK_MESSAGING_BROKER: rabbit
     extends:
       file: common-config.yml
       service: microservice-eureka-config
 
   cards:
-    image: "eazybytes/cards:s13"
+    image: "eazybytes/cards:s14"
     container_name: cards-ms
     ports:
       - "9000:9000"
@@ -131,34 +134,26 @@ services:
         condition: service_healthy
       eurekaserver:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "cards"
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_RABBITMQ_PORT: "5672"
-      SPRING_RABBITMQ_USERNAME: eazybank
-      SPRING_RABBITMQ_PASSWORD: eazybank
-      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
-      EAZYBANK_MESSAGING_BROKER: rabbit
     extends:
       file: common-config.yml
       service: microservice-eureka-config
 
   message:
-    image: "eazybytes/message:s13"
+    image: "eazybytes/message:s14"
     container_name: message-ms
     depends_on:
-      rabbitmq:
+      kafka:
         condition: service_healthy
     environment:
-      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS: kafka:19092
     extends:
       file: common-config.yml
       service: microservice-base-config
 
   gatewayserver:
-    image: "eazybytes/gatewayserver:s13"
+    image: "eazybytes/gatewayserver:s14"
     container_name: gatewayserver-ms
     ports:
       - "8072:8072"
@@ -169,17 +164,10 @@ services:
         condition: service_healthy
       cards:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     environment:
       SPRING_APPLICATION_NAME: "gatewayserver"
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_RABBITMQ_PORT: "5672"
-      SPRING_RABBITMQ_USERNAME: eazybank
-      SPRING_RABBITMQ_PASSWORD: eazybank
-      SPRING_RABBITMQ_VIRTUAL_HOST: eazybank
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://host.docker.internal:7080/realms/master/protocol/openid-connect/certs
-      # Il TimeLimiter di Resilience4j è 1s. La create di accounts, con il confirm RabbitMQ, lo supera e il browser riceve 504.
+      # Il TimeLimiter di Resilience4j è 1s. La create di accounts lo supera e il browser riceve 504.
       RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION: 10s
       # Origine della shell nginx pubblicata sulla porta 3000.
       EAZYBANK_CORS_ALLOWED_ORIGINS: http://localhost:3000

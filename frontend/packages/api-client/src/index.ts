@@ -1,4 +1,4 @@
-import type { DomainEvent, ErrorResponseDto, ResponseDto } from "@easybank/contracts";
+import type { ErrorResponseDto, ResponseDto } from "@easybank/contracts";
 
 export const CORRELATION_HEADER = "eazybank-correlation-id";
 
@@ -222,50 +222,5 @@ export function describeFailure(status: number, failure: ApiFailure): string {
       return `${status} · risposta vuota`;
     case "unknown":
       return status >= 500 ? `${status} · Errore del servizio · risposta non riconosciuta` : `${status} · risposta non riconosciuta`;
-  }
-}
-
-export async function* subscribeCustomerEvents(
-  baseUrl: string,
-  mobileNumber: string,
-  accessToken: string,
-  signal: AbortSignal,
-): AsyncGenerator<DomainEvent> {
-  const correlationId = createCorrelationId();
-  const response = await fetch(
-    `${baseUrl.replace(/\/$/, "")}/eazybank/events/stream?mobileNumber=${encodeURIComponent(mobileNumber)}`,
-    {
-      headers: {
-        Accept: "text/event-stream",
-        Authorization: `Bearer ${accessToken}`,
-        [CORRELATION_HEADER]: correlationId,
-      },
-      signal,
-    },
-  );
-  if (!response.ok || response.body == null) {
-    throw new Error(`Event stream failed with status ${response.status}`);
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      return;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const chunks = buffer.split("\n\n");
-    buffer = chunks.pop() ?? "";
-    for (const chunk of chunks) {
-      const data = chunk
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim())
-        .join("\n");
-      if (data.length > 0) {
-        yield JSON.parse(data) as DomainEvent;
-      }
-    }
   }
 }

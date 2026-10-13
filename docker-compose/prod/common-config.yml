@@ -10,6 +10,13 @@ services:
       resources:
         limits:
           memory: 700m
+    environment:
+      # Le immagini s14 esportano OTLP verso localhost. Tempo è il servizio tempo, non il container stesso.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_LOGS_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
 
   microservice-configserver-config:
     extends:

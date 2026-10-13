@@ -33,14 +33,10 @@ spring:
           group: ${spring.application.name}
         sendCommunication-out-0:
           destination: send-communication
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: eazybank
-    password: eazybank
-    virtual-host: eazybank
-    connection-timeout: 10s
-    publisher-confirm-type: correlated
+      kafka:
+        binder:
+          brokers:
+            - localhost:9092
 
 management:
   endpoints:
@@ -102,10 +98,6 @@ resilience4j.circuitbreaker:
 #         - java.lang.NullPointerException
 #       retryExceptions:
 #         - java.util.concurrent.TimeoutException
-
-eazybank:
-  messaging:
-    broker: rabbit
 
 # resilience4j.ratelimiter:
 #   configs:
