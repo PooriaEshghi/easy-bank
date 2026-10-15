@@ -12,6 +12,7 @@ Piano per costruire il frontend di Easy Bank come shell React che compone tre mi
 | loans | 8090 | `/eazybank/loans/**` → `lb://LOANS` |
 | cards | 9000 | `/eazybank/cards/**` → `lb://CARDS` |
 | gatewayserver | 8072 | unico entry point del frontend |
+| rabbitmq | 5672 AMQP, 15672 management | non esposto al browser; vedi fase 9 |
 | Keycloak | 7080 | realm `master`, JWKS `http://localhost:7080/realms/master/protocol/openid-connect/certs` |
 
 Il gateway riscrive il prefisso. Una chiamata a `GET /eazybank/accounts/api/fetch` arriva al servizio accounts come `GET /api/fetch`.
@@ -102,6 +103,7 @@ Base URL di sviluppo: `http://localhost:8072`.
 | Aggiorna prestito | `PUT /eazybank/loans/api/update` | `LOANS` | body `LoansDto` |
 | Elimina prestito | `DELETE /eazybank/loans/api/delete?mobileNumber=` | `LOANS` | |
 | Contatti loans | `GET /eazybank/loans/api/contact-info` | pubblica | |
+| Eventi del cliente | `GET /eazybank/events/stream?mobileNumber=` | token valido, nessun realm role | `text/event-stream`, servito dal gateway, fase 10 |
 
 `build-info` e `java-version` restano fuori dal prodotto: sono diagnostica dei microservizi.
 
@@ -139,9 +141,115 @@ In Keycloak, realm `master`, creare un client public `easybank-shell` con redire
 
 Le letture restano utilizzabili anche senza login, in linea con `permitAll` sui `GET`.
 
+## Implementazione RabbitMQ
+
+RabbitMQ è il bus interno tra accounts, cards, loans e il gateway. Il browser continua a parlare solo con `8072`. Il messaggio porta il fatto che un `mobileNumber` è cambiato; il dato lo rilegge chi già oggi lo legge via REST. `fetchCustomerDetails` resta sulle due chiamate Feign (`CardsFeignClient`, `LoansFeignClient`).
+
+Si usa `spring-boot-starter-amqp` sul parent Boot 4.0 già presente, nei quattro servizi accounts, cards, loans e gatewayserver. Spring Cloud Stream non entra: le routing key sono nove e i listener sono tre.
+
+### Broker
+
+Servizio `rabbitmq` in `docker-compose/default/docker-compose.yml` (e gli equivalenti `qa` e `prod`):
+
+| | |
+| --- | --- |
+| Immagine | `rabbitmq:4-management` |
+| AMQP | `5672`, in rete `eazybank`; pubblicato sull'host solo nel compose locale, per i servizi avviati con Maven |
+| Management | `15672`, solo rete locale |
+| Vhost | `eazybank` |
+| Utente | `eazybank` |
+| Password | `eazybank` nel compose locale. In `qa` e `prod` la variabile `RABBITMQ_DEFAULT_PASS` è obbligatoria e ha un altro valore |
+
+Healthcheck: `rabbitmq-diagnostics -q ping`. I quattro servizi dipendono da quel healthcheck.
+
+Il config server attivo importa il git `eazybytes-config` (`spring.profiles.active: git` in `configserver`). I file `configserver/src/main/resources/config/*.yml` di questo repository non sono il profilo in esecuzione, e la password non va messa in quel git. La configurazione vive in due punti che questo progetto controlla:
+
+- `application.yml` di accounts, cards, loans e gatewayserver, per l'avvio da Maven verso `localhost:5672`;
+- nel compose, le variabili `SPRING_RABBITMQ_HOST=rabbitmq`, `SPRING_RABBITMQ_PORT=5672`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD`, `SPRING_RABBITMQ_VIRTUAL_HOST=eazybank`. L'env batte sia lo yaml locale sia un eventuale valore arrivato dal config server.
+
+```yaml
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: eazybank
+    password: eazybank
+    virtual-host: eazybank
+    publisher-confirm-type: correlated
+    listener:
+      simple:
+        acknowledge-mode: manual
+```
+
+Lo starter registra l'indicatore di health `rabbit`. Non va aggiunto al gruppo readiness: un broker fermo porta l'health complessivo a `DOWN` e lascia la readiness `UP`, lo stesso comportamento già visto con Redis sul gateway. Le mutazioni HTTP restano servite.
+
+Converter JSON fornito dallo starter per il Jackson del parent Boot 4.0. Exchange, code e binding sono bean dichiarati all'avvio (`RabbitAdmin`): niente code create a mano dalla management UI.
+
+### Topologia
+
+Topic exchange durevole `eazybank.events`. Dead-letter exchange `eazybank.events.dlx`.
+
+| Routing key | Produttore | Quando |
+| --- | --- | --- |
+| `accounts.created` | accounts | dopo `createAccount`, con cliente e conto salvati |
+| `accounts.updated` | accounts | dopo `updateAccount` che ritorna true |
+| `accounts.deleted` | accounts | dopo `deleteAccount` |
+| `cards.created`, `cards.updated`, `cards.deleted` | cards | dopo la mutazione corrispondente |
+| `loans.created`, `loans.updated`, `loans.deleted` | loans | dopo la mutazione corrispondente |
+
+Un update che risponde **417** non pubblica: il salvataggio non c'è stato.
+
+| Coda | Binding | Consumatore |
+| --- | --- | --- |
+| `cards.accounts` | `accounts.deleted` | cards |
+| `loans.accounts` | `accounts.deleted` | loans |
+| `gatewayserver.events.<instanceId>` | `accounts.*`, `cards.*`, `loans.*` | quel processo del gateway |
+
+La coda del gateway è exclusive e auto-delete, una per processo (`instanceId` generato all'avvio). Ogni replica riceve la propria copia. Una coda condivisa consegnerebbe l'evento a una sola replica. Le DLQ sono `cards.accounts.dlq`, `loans.accounts.dlq` e `gatewayserver.events.dlq`.
+
+Il listener di cards e loans ritenta 3 volte, a 2 secondi, poi pubblica sulla DLQ (`RepublishMessageRecoverer`). Il messaggio resta leggibile dalla management UI. Il listener del gateway fa ack anche se nessun browser è collegato: l'aggiornamento perso si recupera alla prossima GET. In DLQ ci finisce un errore del consumatore, non l'assenza di abbonati.
+
+### Contratto del messaggio
+
+Body JSON. Niente nome, email, importi o numeri carta/prestito: chi consuma, se gli serve il dato, chiama la GET che già esiste.
+
+| Campo | Regola |
+| --- | --- |
+| `eventId` | UUID generato dal produttore |
+| `eventType` | la routing key |
+| `mobileNumber` | 10 cifre |
+| `occurredAt` | ISO-8601 |
+| `correlationId` | l'`eazybank-correlation-id` della richiesta HTTP che ha eseguito la mutazione |
+
+Lo stesso valore viaggia nell'header AMQP `eazybank-correlation-id`. In caso di errore e di approdo in DLQ il listener lo scrive nel log.
+
+La pubblicazione avviene dopo il `save` o il `delete` JPA riuscito, nella stessa richiesta. Se il confirm del broker fallisce, la risposta HTTP resta 201 o 200: la scrittura è già fatta. Il fallimento si logga con il correlation id. Un outbox transazionale non fa parte di questa implementazione.
+
+### Cancellazione a cascata
+
+Oggi `deleteAccount` rimuove cliente e conto e lascia carta e prestito. Il listener di cards e quello di loans, su `accounts.deleted`, chiamano il metodo di dominio già usato da `DELETE /api/delete?mobileNumber=`. Se la riga non c'è, ack e stop: la cancellazione è idempotente. Se la riga c'era, dopo la delete locale il servizio pubblica `cards.deleted` o `loans.deleted`. Nessun servizio è in ascolto delle proprie routing key.
+
+### Flusso verso la shell
+
+Il gateway è già WebFlux e serve lui stesso, senza una riga nuova in `eazyBankRouteConfig`:
+
+`GET /eazybank/events/stream?mobileNumber=`
+
+`text/event-stream`. Il `@RabbitListener` consegna a un sink in memoria indicizzato per cellulare e fa ack; il controller restituisce il `Flux` di quella richiesta. Alla chiusura della connessione il sink della richiesta si sgancia. La consegna al sink non gira sul thread di Netty.
+
+In `SecurityConfig` il matcher di questo path va registrato prima di `pathMatchers(HttpMethod.GET).permitAll()`, altrimenti il primo matcher rende pubblico anche lo stream. Regola: `authenticated()`, un JWT valido, senza realm role `ACCOUNTS`, `CARDS` o `LOANS`. Le altre GET restano pubbliche.
+
+`EventSource` non può inviare `Authorization`. Il client è `fetch` con lettura dello stream, gli header già previsti da `api-client` (`Authorization`, `eazybank-correlation-id`) e `AbortSignal` alla chiusura della pagina. CORS di fase 1 copre già questi header; lo stream non ne aggiunge.
+
+La shell, sulla route `/clienti/:mobileNumber`, tiene un solo stream. All'evento pubblica sul bus di `@easybank/api-client` il trio `mobileNumber`, `eventType`, `correlationId`. La dashboard invalida `fetchCustomerDetails`. Il remote il cui nome sta in `eventType` (`accounts`, `cards` o `loans`) invalida la propria query TanStack. Gli altri due non ricaricano.
+
+Il bus funziona solo se shell e remote condividono lo stesso modulo. In `vite.config.ts` dei quattro frontend, `shared` di Module Federation ha già `react` e `react-dom` come singleton: va aggiunto `@easybank/api-client` con `singleton: true`. Senza quella riga ogni remote ha una copia del bus e l'evento della shell non arriva.
+
+Se il broker o lo stream non rispondono, la mutazione HTTP resta valida. La shell segnala lo stream interrotto, correlation id visibile, e il prossimo ingresso sulla dashboard rilegge via REST.
+
 ## Fasi
 
-Ogni fase si chiude quando i criteri di quella fase sono veri nel browser, contro il backend locale già avviato (configserver, eureka, accounts, loans, cards, gateway, Keycloak).
+Ogni fase si chiude quando i criteri di quella fase sono veri nel browser, contro il backend locale già avviato (configserver, eureka, accounts, loans, cards, gateway, Keycloak). Dalla fase 9 la stack include anche RabbitMQ.
 
 ### Fase 0 — Scheletro del workspace
 
@@ -234,6 +342,28 @@ Criterio: `docker compose` della stack più i quattro frontend permette il perco
 - Un test di componente per il form cliente (validazione 5–30 / email / 10 cifre) e uno per il form importi carta.
 - Una prova end-to-end del percorso sportello (Playwright) contro gateway e Keycloak locali, marcata come opzionale in CI finché la stack non è disponibile nel runner.
 
+### Fase 9 — RabbitMQ tra i microservizi
+
+Dipende dai tre servizi di dominio e dal compose locale. Può partire prima del frontend.
+
+- Servizio `rabbitmq` nei tre compose, healthcheck, env `SPRING_RABBITMQ_*` su accounts, cards, loans e gatewayserver.
+- `spring-boot-starter-amqp` e i bean di exchange, code, binding e DLQ.
+- Publish sulle mutazioni riuscite, con il contratto descritto sopra. Il 417 non pubblica.
+- Listener `accounts.deleted` in cards e in loans, idempotente, con i tre tentativi e la DLQ.
+
+Criterio: creare un cliente, creare una carta, cancellare il cliente da accounts. `GET /eazybank/cards/api/fetch` non trova più la carta. Sulla management `15672` si vedono `accounts.deleted` consegnato a `cards.accounts` e `cards.deleted` pubblicato. Con cards spento prima della cancellazione, il messaggio resta in coda; a cards riacceso la carta sparisce senza un secondo delete.
+
+### Fase 10 — Stream degli eventi nella shell
+
+Dipende dalla fase 1 (CORS e token), dalla fase 2 (dashboard) e dalle fasi 3–5 (una mutazione visibile). Il punto naturale è dopo la fase 6.
+
+- `GET /eazybank/events/stream` sul gateway, matcher `authenticated()` prima del `permitAll` dei GET.
+- Tipo `DomainEvent` in `@easybank/contracts`. Lettura dello stream in `@easybank/api-client`, con `fetch` e `AbortSignal`.
+- `@easybank/api-client` singleton nella config Module Federation di shell, accounts, cards e loans.
+- La shell si iscrive al cliente aperto e pubblica sul bus. Dashboard e remote del dominio indicato invalidano la query.
+
+Criterio: due schede sullo stesso cellulare, stesso utente loggato. In una si aggiorna un importo della carta. L'altra, senza ricaricare la pagina, mostra l'importo nuovo in dashboard e nel remote cards. Con RabbitMQ spento la `PUT` riesce comunque e la seconda scheda si aggiorna al successivo ingresso sulla dashboard.
+
 ## Ordine di lavoro consigliato
 
 ```text
@@ -246,9 +376,13 @@ Fase 0 workspace
             → Fase 6 rifinitura
               → Fase 7 docker
                 → Fase 8 test
+                  → Fase 9 RabbitMQ
+                    → Fase 10 stream sulla shell
 ```
 
 Le fasi 4 e 5 sono indipendenti tra loro e si possono alternare. La 3 viene prima perché senza cliente non esistono carta e prestito.
+
+La fase 9 non ha bisogno delle app React: può avanzare appena accounts, cards, loans e il compose locale ci sono. La fase 10 ha bisogno della dashboard e dei tre remote, quindi sta dopo la fase 6 anche se nel diagramma è in coda alla 9.
 
 ## Fuori da questa roadmap
 
@@ -256,10 +390,15 @@ Le fasi 4 e 5 sono indipendenti tra loro e si possono alternare. La 3 viene prim
 - Un BFF Node. Il gateway e `fetchCustomerDetails` bastano.
 - Condivisione di un design system pubblicato su un registry: il pacchetto `ui` del workspace è sufficiente.
 - Operazioni non presenti nelle API: elenco clienti, movimenti, pagamenti, bonifici.
+- Request/reply su RabbitMQ al posto delle Feign di `fetchCustomerDetails`.
+- Outbox transazionale tra il commit JPA e il confirm del broker.
+- Connessioni AMQP aperte da shell o dai remote. La porta `5672` resta interna.
 
 ## Definizione di finito
 
 Il frontend è pronto quando uno sportellista, dal solo `http://localhost:3000`, cerca un cliente per cellulare, legge il riepilogo aggregato e — se il suo token ha i ruoli — crea e aggiorna conto, carta e prestito passando esclusivamente da `http://localhost:8072`, con un microfrontend isolato per ciascun microservizio Spring.
+
+Con la fase 10, una seconda scheda aperta sullo stesso cliente vede create, update e delete senza ricaricare la shell. La cancellazione del cliente, via `accounts.deleted`, toglie anche carta e prestito.
 
 ## Diario di lavoro — 2026-09-24
 
@@ -319,3 +458,7 @@ Repository Git privato: https://github.com/PooriaEshghi/easy-bank, branch `main`
 Fuori dal repository restano `target/`, `node_modules/`, `dist/`, `.idea/` e gli hook locali di upgrade Java. Non c’erano file `.env`.
 
 Prossima sessione invariata: **fase 1**.
+
+## Diario di lavoro — 2026-09-28
+
+Aggiunta al piano l'implementazione RabbitMQ: bus interno (fase 9) e stream SSE sul gateway consumato dalla shell (fase 10). Nessun codice, nessun compose modificato. La prossima sessione resta la **fase 1**.
