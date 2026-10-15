@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: easybank
+resources:
+  - namespace.yaml
+  - configserver.yaml
+  - eurekaserver.yaml
+  - kafka.yaml
+  - accounts.yaml
+  - loans.yaml
+  - cards.yaml
+  - message.yaml
+  - gatewayserver.yaml
