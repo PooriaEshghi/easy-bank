@@ -1,6 +1,17 @@
 server:
   port: 9010
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    liveness-state:
+      enabled: true
+    readiness-state:
+      enabled: true
+
 spring:
   application:
     name: "message"

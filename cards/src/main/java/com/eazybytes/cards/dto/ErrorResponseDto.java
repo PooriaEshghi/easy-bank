@@ -1,13 +1,12 @@
 package com.eazybytes.cards.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.springframework.http.HttpStatus;
 
 import java.time.LocalDateTime;
 
-@Data @AllArgsConstructor
+@Data
 @Schema(
         name = "ErrorResponse",
         description = "Schema to hold error response information"
@@ -33,5 +32,12 @@ public class ErrorResponseDto {
             description = "Time representing when the error happened"
     )
     private LocalDateTime errorTime;
+
+    public ErrorResponseDto(String apiPath, HttpStatus errorCode, String errorMessage, LocalDateTime errorTime) {
+        this.apiPath = apiPath;
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage;
+        this.errorTime = errorTime;
+    }
 
 }

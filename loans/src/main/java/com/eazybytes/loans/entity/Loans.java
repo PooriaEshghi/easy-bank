@@ -10,7 +10,6 @@ import lombok.*;
 @Getter
 @Setter
 @ToString
-@AllArgsConstructor
 @NoArgsConstructor
 public class Loans extends BaseEntity {
 
@@ -29,5 +28,16 @@ public class Loans extends BaseEntity {
     private int amountPaid;
 
     private int outstandingAmount;
+
+    public Loans(Long loanId, String mobileNumber, String loanNumber, String loanType, int totalLoan,
+            int amountPaid, int outstandingAmount) {
+        this.loanId = loanId;
+        this.mobileNumber = mobileNumber;
+        this.loanNumber = loanNumber;
+        this.loanType = loanType;
+        this.totalLoan = totalLoan;
+        this.amountPaid = amountPaid;
+        this.outstandingAmount = outstandingAmount;
+    }
 
 }

@@ -14,7 +14,6 @@ import com.eazybytes.accounts.messaging.DomainEventPublisher;
 import com.eazybytes.accounts.repository.AccountsRepository;
 import com.eazybytes.accounts.repository.CustomerRepository;
 import com.eazybytes.accounts.service.IAccountsService;
-import lombok.AllArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.stream.function.StreamBridge;
@@ -25,7 +24,6 @@ import java.util.Optional;
 import java.util.Random;
 
 @Service
-@AllArgsConstructor
 public class AccountsServiceImpl  implements IAccountsService {
 
     private static final Logger log = LoggerFactory.getLogger(AccountsServiceImpl.class);
@@ -34,6 +32,14 @@ public class AccountsServiceImpl  implements IAccountsService {
     private CustomerRepository customerRepository;
     private final StreamBridge streamBridge;
     private final DomainEventPublisher domainEventPublisher;
+
+    public AccountsServiceImpl(AccountsRepository accountsRepository, CustomerRepository customerRepository,
+            StreamBridge streamBridge, DomainEventPublisher domainEventPublisher) {
+        this.accountsRepository = accountsRepository;
+        this.customerRepository = customerRepository;
+        this.streamBridge = streamBridge;
+        this.domainEventPublisher = domainEventPublisher;
+    }
 
     /**
      * @param customerDto - CustomerDto Object

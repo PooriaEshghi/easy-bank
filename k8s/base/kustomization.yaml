@@ -6,6 +6,7 @@ resources:
   - configserver.yaml
   - eurekaserver.yaml
   - kafka.yaml
+  - redis.yaml
   - accounts.yaml
   - loans.yaml
   - cards.yaml

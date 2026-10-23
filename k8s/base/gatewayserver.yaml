@@ -52,10 +52,10 @@ spec:
               value: http://host.docker.internal:7080/realms/master/protocol/openid-connect/certs
             - name: RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION
               value: 10s
-            # Il jar dipende da Redis, ma questo stack non ne ha uno. Senza
-            # questo flag la readiness resta DOWN.
-            - name: MANAGEMENT_HEALTH_REDIS_ENABLED
-              value: "false"
+            - name: SPRING_DATA_REDIS_HOST
+              value: redis
+            - name: SPRING_DATA_REDIS_PORT
+              value: "6379"
             - name: OTEL_SERVICE_NAME
               value: gatewayserver
             - name: OTEL_TRACES_EXPORTER

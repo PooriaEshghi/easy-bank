@@ -7,7 +7,6 @@ import lombok.*;
 @Getter
 @Setter
 @ToString
-@AllArgsConstructor
 @NoArgsConstructor
 public class Customer extends BaseEntity {
 
@@ -22,5 +21,12 @@ public class Customer extends BaseEntity {
 
     @Column(name = "mobile_number")
     private String mobileNumber;
+
+    public Customer(Long customerId, String name, String email, String mobileNumber) {
+        this.customerId = customerId;
+        this.name = name;
+        this.email = email;
+        this.mobileNumber = mobileNumber;
+    }
 
 }

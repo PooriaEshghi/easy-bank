@@ -10,7 +10,6 @@ import lombok.*;
 @Getter
 @Setter
 @ToString
-@AllArgsConstructor
 @NoArgsConstructor
 public class Cards extends BaseEntity {
 
@@ -29,5 +28,16 @@ public class Cards extends BaseEntity {
     private int amountUsed;
 
     private int availableAmount;
+
+    public Cards(Long cardId, String mobileNumber, String cardNumber, String cardType, int totalLimit,
+            int amountUsed, int availableAmount) {
+        this.cardId = cardId;
+        this.mobileNumber = mobileNumber;
+        this.cardNumber = cardNumber;
+        this.cardType = cardType;
+        this.totalLimit = totalLimit;
+        this.amountUsed = amountUsed;
+        this.availableAmount = availableAmount;
+    }
 
 }

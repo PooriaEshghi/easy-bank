@@ -9,18 +9,21 @@ import com.eazybytes.loans.mapper.LoansMapper;
 import com.eazybytes.loans.messaging.DomainEventPublisher;
 import com.eazybytes.loans.repository.LoansRepository;
 import com.eazybytes.loans.service.ILoansService;
-import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 import java.util.Random;
 
 @Service
-@AllArgsConstructor
 public class LoansServiceImpl implements ILoansService {
 
     private LoansRepository loansRepository;
     private final DomainEventPublisher domainEventPublisher;
+
+    public LoansServiceImpl(LoansRepository loansRepository, DomainEventPublisher domainEventPublisher) {
+        this.loansRepository = loansRepository;
+        this.domainEventPublisher = domainEventPublisher;
+    }
 
     /**
      * @param mobileNumber - Mobile Number of the Customer

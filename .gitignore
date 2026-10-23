@@ -24,3 +24,6 @@ hs_err_pid*
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Dati runtime di MinIO e Loki. xl.meta cambia a ogni avvio.
+docker-compose/prod/.data/

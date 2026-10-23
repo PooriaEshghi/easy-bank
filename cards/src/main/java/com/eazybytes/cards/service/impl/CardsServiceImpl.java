@@ -9,18 +9,21 @@ import com.eazybytes.cards.mapper.CardsMapper;
 import com.eazybytes.cards.messaging.DomainEventPublisher;
 import com.eazybytes.cards.repository.CardsRepository;
 import com.eazybytes.cards.service.ICardsService;
-import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 import java.util.Random;
 
 @Service
-@AllArgsConstructor
 public class CardsServiceImpl implements ICardsService {
 
     private CardsRepository cardsRepository;
     private final DomainEventPublisher domainEventPublisher;
+
+    public CardsServiceImpl(CardsRepository cardsRepository, DomainEventPublisher domainEventPublisher) {
+        this.cardsRepository = cardsRepository;
+        this.domainEventPublisher = domainEventPublisher;
+    }
 
     /**
      * @param mobileNumber - Mobile Number of the Customer

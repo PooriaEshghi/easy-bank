@@ -14,18 +14,24 @@ import com.eazybytes.accounts.repository.CustomerRepository;
 import com.eazybytes.accounts.service.ICustomersService;
 import com.eazybytes.accounts.service.client.CardsFeignClient;
 import com.eazybytes.accounts.service.client.LoansFeignClient;
-import lombok.AllArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 @Service
-@AllArgsConstructor
 public class CustomersServiceImpl implements ICustomersService {
 
     private AccountsRepository accountsRepository;
     private CustomerRepository customerRepository;
     private CardsFeignClient cardsFeignClient;
     private LoansFeignClient loansFeignClient;
+
+    public CustomersServiceImpl(AccountsRepository accountsRepository, CustomerRepository customerRepository,
+            CardsFeignClient cardsFeignClient, LoansFeignClient loansFeignClient) {
+        this.accountsRepository = accountsRepository;
+        this.customerRepository = customerRepository;
+        this.cardsFeignClient = cardsFeignClient;
+        this.loansFeignClient = loansFeignClient;
+    }
 
     /**
      * @param mobileNumber - Input Mobile Number
