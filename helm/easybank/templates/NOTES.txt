@@ -1,0 +1,17 @@
+Easy Bank è nel namespace {{ .Release.Namespace }}.
+I Service tengono i nomi DNS usati dalle app:
+configserver, eurekaserver, discoveryserver, kafka, redis, accounts, loans, cards, message, gatewayserver.
+
+Porte LoadBalancer su Docker Desktop:
+  eurekaserver   8070
+  configserver   8071
+  gatewayserver  8072
+  kafka          9092 (host) e 19092 (nel cluster)
+
+accounts, loans, cards, message e discoveryserver restano ClusterIP.
+Il gateway risolve accounts, loans e cards tramite discoveryserver:8761.
+Eureka resta nel cluster, ma accounts, loans, cards e gatewayserver hanno il client spento.
+
+Non installare questa release mentre è attivo lo stack di kubectl apply -k k8s:
+le porte 8070, 8071, 8072 e 9092 non si possono condividere.
+Il rollback di una release Helm è `helm rollback`, non `kubectl rollout undo`.

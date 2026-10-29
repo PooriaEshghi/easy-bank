@@ -301,7 +301,7 @@ services:
       OTEL_SERVICE_NAME: "eurekaserver"
 
   accounts:
-    image: "eazybytes/accounts:s14"
+    image: "eazybytes/accounts:s17"
     container_name: accounts-ms
     volumes: *health-volume
     healthcheck:
@@ -326,7 +326,7 @@ services:
       service: microservice-eureka-config
 
   loans:
-    image: "eazybytes/loans:s14"
+    image: "eazybytes/loans:s17"
     container_name: loans-ms
     depends_on:
       configserver:
@@ -348,7 +348,7 @@ services:
       service: microservice-eureka-config
 
   cards:
-    image: "eazybytes/cards:s14"
+    image: "eazybytes/cards:s17"
     container_name: cards-ms
     depends_on:
       configserver:
@@ -383,7 +383,7 @@ services:
       service: microservice-base-config
 
   gatewayserver:
-    image: "eazybytes/gatewayserver:s14"
+    image: "eazybytes/gatewayserver:s17"
     container_name: gatewayserver-ms
     ports:
       - "8072:8072"

@@ -32,7 +32,7 @@ spec:
     spec:
       containers:
         - name: gatewayserver
-          image: eazybytes/gatewayserver:s14
+          image: eazybytes/gatewayserver:s17
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -48,6 +48,12 @@ spec:
               value: configserver:http://configserver:8071/
             - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
               value: http://eurekaserver:8070/eureka/
+            - name: EUREKA_CLIENT_ENABLED
+              value: "false"
+            - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_ENABLED
+              value: "true"
+            - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_DISCOVERY_SERVER_URL
+              value: http://discoveryserver:8761
             - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
               value: http://host.docker.internal:7080/realms/master/protocol/openid-connect/certs
             - name: RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION

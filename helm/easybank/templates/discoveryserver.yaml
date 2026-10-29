@@ -1,0 +1,98 @@
+{{- if .Values.discoveryServer.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: discoveryserver
+  labels:
+    {{- include "easybank.serviceLabels" (dict "name" "discoveryserver" "root" .) | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: discoveryserver
+  labels:
+    {{- include "easybank.serviceLabels" (dict "name" "discoveryserver" "root" .) | nindent 4 }}
+rules:
+  - apiGroups: ["", "apps"]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: discoveryserver
+  labels:
+    {{- include "easybank.serviceLabels" (dict "name" "discoveryserver" "root" .) | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: discoveryserver
+subjects:
+  - kind: ServiceAccount
+    name: discoveryserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discoveryserver
+  labels:
+    {{- include "easybank.serviceLabels" (dict "name" "discoveryserver" "root" .) | nindent 4 }}
+spec:
+  type: {{ .Values.discoveryServer.serviceType }}
+  selector:
+    app: discoveryserver
+  ports:
+    - name: http
+      port: {{ .Values.discoveryServer.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discoveryserver
+  labels:
+    {{- include "easybank.serviceLabels" (dict "name" "discoveryserver" "root" .) | nindent 4 }}
+spec:
+  replicas: {{ .Values.discoveryServer.replicas }}
+  selector:
+    matchLabels:
+      app: discoveryserver
+  template:
+    metadata:
+      labels:
+        {{- include "easybank.serviceLabels" (dict "name" "discoveryserver" "root" .) | nindent 8 }}
+    spec:
+      serviceAccountName: discoveryserver
+      containers:
+        - name: discoveryserver
+          image: {{ .Values.discoveryServer.image }}
+          imagePullPolicy: {{ .Values.discoveryServer.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.discoveryServer.port }}
+          env:
+            - name: MANAGEMENT_HEALTH_KUBERNETES_ENABLED
+              value: "false"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE
+              value: livenessState
+            - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE
+              value: readinessState
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.discoveryServer.resources | nindent 12 }}
+{{- end }}

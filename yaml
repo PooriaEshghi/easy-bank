@@ -1,0 +1,886 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/part-of: easy-bank
+  name: easybank
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: discoveryserver
+  name: discoveryserver
+  namespace: easybank
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: discoveryserver
+  name: discoveryserver
+  namespace: easybank
+rules:
+- apiGroups:
+  - ""
+  - apps
+  resources:
+  - pods
+  - services
+  - endpoints
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: discoveryserver
+  name: discoveryserver
+  namespace: easybank
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: discoveryserver
+subjects:
+- kind: ServiceAccount
+  name: discoveryserver
+  namespace: easybank
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: accounts
+  name: accounts
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+  selector:
+    app: accounts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: cards
+  name: cards
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 9000
+    targetPort: http
+  selector:
+    app: cards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: configserver
+  name: configserver
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 8071
+    targetPort: http
+  selector:
+    app: configserver
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: discoveryserver
+  name: discoveryserver
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 8761
+    targetPort: http
+  selector:
+    app: discoveryserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: eurekaserver
+  name: eurekaserver
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 8070
+    targetPort: http
+  selector:
+    app: eurekaserver
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: gatewayserver
+  name: gatewayserver
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 8072
+    targetPort: http
+  selector:
+    app: gatewayserver
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kafka
+  name: kafka
+  namespace: easybank
+spec:
+  ports:
+  - name: plaintext
+    port: 19092
+    targetPort: plaintext
+  - name: host
+    port: 9092
+    targetPort: host
+  selector:
+    app: kafka
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: loans
+  name: loans
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 8090
+    targetPort: http
+  selector:
+    app: loans
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: message
+  name: message
+  namespace: easybank
+spec:
+  ports:
+  - name: http
+    port: 9010
+    targetPort: http
+  selector:
+    app: message
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: redis
+  name: redis
+  namespace: easybank
+spec:
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: accounts
+  name: accounts
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: accounts
+  template:
+    metadata:
+      labels:
+        app: accounts
+    spec:
+      containers:
+      - env:
+        - name: SPRING_APPLICATION_NAME
+          value: accounts
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: SPRING_CONFIG_IMPORT
+          value: configserver:http://configserver:8071/
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: http://eurekaserver:8070/eureka/
+        - name: EUREKA_CLIENT_ENABLED
+          value: "false"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_ENABLED
+          value: "true"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_DISCOVERY_SERVER_URL
+          value: http://discoveryserver:8761
+        - name: SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS
+          value: kafka:19092
+        - name: OTEL_SERVICE_NAME
+          value: accounts
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/accounts:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: accounts
+        ports:
+        - containerPort: 8080
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cards
+  name: cards
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cards
+  template:
+    metadata:
+      labels:
+        app: cards
+    spec:
+      containers:
+      - env:
+        - name: SPRING_APPLICATION_NAME
+          value: cards
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: SPRING_CONFIG_IMPORT
+          value: configserver:http://configserver:8071/
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: http://eurekaserver:8070/eureka/
+        - name: EUREKA_CLIENT_ENABLED
+          value: "false"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_ENABLED
+          value: "true"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_DISCOVERY_SERVER_URL
+          value: http://discoveryserver:8761
+        - name: OTEL_SERVICE_NAME
+          value: cards
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/cards:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: cards
+        ports:
+        - containerPort: 9000
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: configserver
+  name: configserver
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: configserver
+  template:
+    metadata:
+      labels:
+        app: configserver
+    spec:
+      containers:
+      - env:
+        - name: OTEL_SERVICE_NAME
+          value: configserver
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/configserver:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: configserver
+        ports:
+        - containerPort: 8071
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: discoveryserver
+  name: discoveryserver
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discoveryserver
+  template:
+    metadata:
+      labels:
+        app: discoveryserver
+    spec:
+      containers:
+      - image: springcloud/spring-cloud-kubernetes-discoveryserver:5.0.3-SNAPSHOT
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: discoveryserver
+        ports:
+        - containerPort: 8761
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+      serviceAccountName: discoveryserver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: eurekaserver
+  name: eurekaserver
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eurekaserver
+  template:
+    metadata:
+      labels:
+        app: eurekaserver
+    spec:
+      containers:
+      - env:
+        - name: SPRING_APPLICATION_NAME
+          value: eurekaserver
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: SPRING_CONFIG_IMPORT
+          value: configserver:http://configserver:8071/
+        - name: OTEL_SERVICE_NAME
+          value: eurekaserver
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/eurekaserver:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: eurekaserver
+        ports:
+        - containerPort: 8070
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: gatewayserver
+  name: gatewayserver
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gatewayserver
+  template:
+    metadata:
+      labels:
+        app: gatewayserver
+    spec:
+      containers:
+      - env:
+        - name: SERVER_PORT
+          value: "8072"
+        - name: SPRING_APPLICATION_NAME
+          value: gatewayserver
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: SPRING_CONFIG_IMPORT
+          value: configserver:http://configserver:8071/
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: http://eurekaserver:8070/eureka/
+        - name: EUREKA_CLIENT_ENABLED
+          value: "false"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_ENABLED
+          value: "true"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_DISCOVERY_SERVER_URL
+          value: http://discoveryserver:8761
+        - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
+          value: http://host.docker.internal:7080/realms/master/protocol/openid-connect/certs
+        - name: RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION
+          value: 10s
+        - name: SPRING_DATA_REDIS_HOST
+          value: redis
+        - name: SPRING_DATA_REDIS_PORT
+          value: "6379"
+        - name: OTEL_SERVICE_NAME
+          value: gatewayserver
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/gatewayserver:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: gatewayserver
+        ports:
+        - containerPort: 8072
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kafka
+  name: kafka
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+      - env:
+        - name: KAFKA_NODE_ID
+          value: "1"
+        - name: KAFKA_PROCESS_ROLES
+          value: broker,controller
+        - name: KAFKA_LISTENERS
+          value: CONTROLLER://:29093,PLAINTEXT://:19092,PLAINTEXT_HOST://:9092
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: PLAINTEXT
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: CONTROLLER
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: 1@127.0.0.1:29093
+        - name: CLUSTER_ID
+          value: 4L6g3nShT-eMCtK--X86sw
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"
+        - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+          value: "0"
+        - name: KAFKA_NUM_PARTITIONS
+          value: "3"
+        - name: KAFKA_HEAP_OPTS
+          value: -Xms256m -Xmx512m
+        - name: KAFKA_LOG_DIRS
+          value: /tmp/kraft-combined-logs
+        image: apache/kafka:4.1.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          periodSeconds: 20
+          tcpSocket:
+            port: plaintext
+        name: kafka
+        ports:
+        - containerPort: 19092
+          name: plaintext
+        - containerPort: 9092
+          name: host
+        - containerPort: 29093
+          name: controller
+        readinessProbe:
+          periodSeconds: 10
+          tcpSocket:
+            port: plaintext
+        resources:
+          limits:
+            memory: 1Gi
+          requests:
+            cpu: 200m
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 24
+          periodSeconds: 5
+          tcpSocket:
+            port: plaintext
+        volumeMounts:
+        - mountPath: /tmp/kraft-combined-logs
+          name: data
+      securityContext:
+        fsGroup: 1000
+      volumes:
+      - emptyDir: {}
+        name: data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: loans
+  name: loans
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loans
+  template:
+    metadata:
+      labels:
+        app: loans
+    spec:
+      containers:
+      - env:
+        - name: SPRING_APPLICATION_NAME
+          value: loans
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: SPRING_CONFIG_IMPORT
+          value: configserver:http://configserver:8071/
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: http://eurekaserver:8070/eureka/
+        - name: EUREKA_CLIENT_ENABLED
+          value: "false"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_ENABLED
+          value: "true"
+        - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_DISCOVERY_SERVER_URL
+          value: http://discoveryserver:8761
+        - name: OTEL_SERVICE_NAME
+          value: loans
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/loans:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: loans
+        ports:
+        - containerPort: 8090
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: message
+  name: message
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: message
+  template:
+    metadata:
+      labels:
+        app: message
+    spec:
+      containers:
+      - env:
+        - name: SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS
+          value: kafka:19092
+        - name: OTEL_SERVICE_NAME
+          value: message
+        - name: OTEL_TRACES_EXPORTER
+          value: none
+        - name: OTEL_LOGS_EXPORTER
+          value: none
+        - name: OTEL_METRICS_EXPORTER
+          value: none
+        - name: MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED
+          value: "false"
+        image: eazybytes/message:s14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 20
+        name: message
+        ports:
+        - containerPort: 9010
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 700Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: redis
+  name: redis
+  namespace: easybank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - args:
+        - redis-server
+        - --save
+        - ""
+        - --appendonly
+        - "no"
+        image: redis:7-alpine
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          periodSeconds: 20
+        name: redis
+        ports:
+        - containerPort: 6379
+          name: redis
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        startupProbe:
+          failureThreshold: 12
+          periodSeconds: 5
+          tcpSocket:
+            port: redis
+        volumeMounts:
+        - mountPath: /data
+          name: data
+      volumes:
+      - emptyDir: {}
+        name: data

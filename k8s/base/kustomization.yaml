@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - configserver.yaml
   - eurekaserver.yaml
+  - discoveryserver.yaml
   - kafka.yaml
   - redis.yaml
   - accounts.yaml

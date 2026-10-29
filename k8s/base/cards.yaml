@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: cards
-          image: eazybytes/cards:s14
+          image: eazybytes/cards:s17
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -44,6 +44,12 @@ spec:
               value: configserver:http://configserver:8071/
             - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
               value: http://eurekaserver:8070/eureka/
+            - name: EUREKA_CLIENT_ENABLED
+              value: "false"
+            - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_ENABLED
+              value: "true"
+            - name: SPRING_CLOUD_KUBERNETES_DISCOVERY_DISCOVERY_SERVER_URL
+              value: http://discoveryserver:8761
             - name: OTEL_SERVICE_NAME
               value: cards
             - name: OTEL_TRACES_EXPORTER

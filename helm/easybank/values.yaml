@@ -1,0 +1,171 @@
+# Valori del chart easybank.
+# I nomi dei Service restano configserver, eurekaserver, discoveryserver, kafka, redis,
+# accounts, loans, cards, message e gatewayserver: le app si chiamano così.
+# I selettori dei Deployment restano app:<nome>.
+# Questi default ripetono l'overlay k8s/overlays/docker-desktop:
+# configserver, eurekaserver, gatewayserver e kafka sono LoadBalancer.
+
+image:
+  repository: eazybytes
+  tag: s14
+  pullPolicy: IfNotPresent
+
+# Impostazioni condivise dai servizi Spring che importano il config server.
+config:
+  profile: prod
+  configImport: configserver:http://configserver:8071/
+  eurekaUrl: http://eurekaserver:8070/eureka/
+  discoveryServerUrl: http://discoveryserver:8761
+  kafkaBrokers: kafka:19092
+
+otel:
+  tracesExporter: none
+  logsExporter: none
+  metricsExporter: none
+  metricsExportEnabled: "false"
+
+probes:
+  startup:
+    path: /actuator/health/liveness
+    periodSeconds: 5
+    failureThreshold: 36
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 10
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 20
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    memory: 700Mi
+
+# spring: nome, profilo prod e import del config server.
+# eureka: lascia l'URL di Eureka nel pod. Con kubernetesDiscovery il client Eureka è spento.
+# kubernetesDiscovery: il pod chiede i Service a discoveryserver.
+# kafka: binder Spring Cloud Stream.
+# extraEnv: variabili solo di quel servizio. I valori finiscono sempre tra virgolette.
+services:
+  configserver:
+    enabled: true
+    port: 8071
+    serviceType: LoadBalancer
+    replicas: 1
+  eurekaserver:
+    enabled: true
+    port: 8070
+    serviceType: LoadBalancer
+    replicas: 1
+    spring: true
+  accounts:
+    enabled: true
+    port: 8080
+    serviceType: ClusterIP
+    replicas: 1
+    spring: true
+    eureka: true
+    kubernetesDiscovery: true
+    kafka: true
+    image: eazybytes/accounts:s17
+  loans:
+    enabled: true
+    port: 8090
+    serviceType: ClusterIP
+    replicas: 1
+    spring: true
+    eureka: true
+    kubernetesDiscovery: true
+    image: eazybytes/loans:s17
+  cards:
+    enabled: true
+    port: 9000
+    serviceType: ClusterIP
+    replicas: 1
+    spring: true
+    eureka: true
+    kubernetesDiscovery: true
+    image: eazybytes/cards:s17
+  message:
+    enabled: true
+    port: 9010
+    serviceType: ClusterIP
+    replicas: 1
+    kafka: true
+  gatewayserver:
+    enabled: true
+    port: 8072
+    serviceType: LoadBalancer
+    replicas: 1
+    spring: true
+    eureka: true
+    kubernetesDiscovery: true
+    image: eazybytes/gatewayserver:s17
+    extraEnv:
+      SERVER_PORT: "8072"
+      # Keycloak è il processo già in ascolto sull'host, porta 7080.
+      # Su Docker Desktop i pod risolvono host.docker.internal.
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://host.docker.internal:7080/realms/master/protocol/openid-connect/certs
+      RESILIENCE4J_TIMELIMITER_CONFIGS_DEFAULT_TIMEOUTDURATION: 10s
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+
+# Docker Hub pubblica la linea 5.0 solo come 5.0.3-SNAPSHOT, non come tag di release.
+discoveryServer:
+  enabled: true
+  image: springcloud/spring-cloud-kubernetes-discoveryserver:5.0.3-SNAPSHOT
+  pullPolicy: IfNotPresent
+  port: 8761
+  replicas: 1
+  serviceType: ClusterIP
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      memory: 700Mi
+
+kafka:
+  enabled: true
+  image: apache/kafka:4.1.1
+  pullPolicy: IfNotPresent
+  serviceType: LoadBalancer
+  replicas: 1
+  clusterId: 4L6g3nShT-eMCtK--X86sw
+  nodeId: "1"
+  # I listener non usano l'hostname: il bind sul nome del pod fallisce in IPv6.
+  # Nel namespace i client usano kafka:19092. Dall'host, localhost:9092.
+  listeners: CONTROLLER://:29093,PLAINTEXT://:19092,PLAINTEXT_HOST://:9092
+  advertisedListeners: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
+  controllerQuorumVoters: 1@127.0.0.1:29093
+  logDirs: /tmp/kraft-combined-logs
+  heapOpts: "-Xms256m -Xmx512m"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  pullPolicy: IfNotPresent
+  # Resta ClusterIP: lo raggiunge solo il gateway, come redis:6379.
+  serviceType: ClusterIP
+  port: 6379
+  replicas: 1
+  args:
+    - redis-server
+    - --save
+    - ""
+    - --appendonly
+    - "no"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
